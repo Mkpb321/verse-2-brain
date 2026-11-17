@@ -111,7 +111,7 @@ button:focus-visible, a:focus-visible, input:focus-visible {
 .toolbar { display: flex; flex-wrap: wrap; gap: 5px; margin: 11px 0 7px; }
 .toolbar button { min-height: 28px; padding: 3px 8px; font-size: .79rem; }
 .toolbar #clear-all { margin-left: auto; }
-.verse-list { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line-strong); }
+.verse-list { position: relative; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line-strong); }
 .verse-item { border-bottom: 1px solid var(--line); }
 .verse-row { display: flex; align-items: center; gap: 5px; min-height: 43px; padding: 3px 0; }
 .verse-reference {
@@ -146,7 +146,7 @@ button:focus-visible, a:focus-visible, input:focus-visible {
   position: fixed; left: 0; top: 0; z-index: 9999;
   pointer-events: none; margin: 0;
   border: 1px solid var(--drag-outline);
-  border-radius: 10px; padding: 4px 8px;
+  border-radius: 0; padding: 3px 6px;
   background: var(--drag-surface); color: var(--text);
   box-shadow: 0 22px 45px rgba(0,0,0,.25), 0 7px 14px rgba(0,0,0,.15);
   will-change: transform; overflow: hidden; max-height: min(56vh, 300px);
@@ -160,7 +160,7 @@ button:focus-visible, a:focus-visible, input:focus-visible {
   position: relative; z-index: 2;
   background: var(--drag-surface);
   border: 1px solid var(--drag-outline);
-  border-radius: 8px;
+  border-radius: 0;
   transform: rotate(-1deg) scale(1.02);
   box-shadow: 0 12px 24px rgba(0,0,0,.23);
 }
@@ -242,4 +242,7 @@ button:focus-visible, a:focus-visible, input:focus-visible {
 }
 @media (prefers-reduced-motion: no-preference) {
   :focus-visible { scroll-margin: 15px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .verse-item.keyboard-dragging { transform: none; }
 }

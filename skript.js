@@ -822,6 +822,43 @@ function detailUrl(item) {
 // auf iOS/Android). Nur der Griff startet das Ziehen; Links bleiben klickbar.
 const reorderStatus = document.getElementById('reorder-status');
 let draggedVerse = null;
+const reducedReorderMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+const shiftAnimations = new WeakMap();
+
+// FLIP: Erst die sichtbaren Positionen messen, dann das DOM umsortieren
+// und die verdrängten Einträge sanft an ihren neuen Platz gleiten lassen.
+// Nur die anderen Verse bewegen sich; der gezogene Vers bleibt am Pointer.
+function moveVerseSmoothly(move) {
+  if (reducedReorderMotion.matches) {
+    move();
+    return;
+  }
+  const otherRows = Array.from(listElement.children)
+    .filter(row => row !== draggedVerse?.element);
+  const previous = new Map(otherRows.map(row => [row, row.getBoundingClientRect().top]));
+
+  // Bei schnellem Ziehen von der gerade sichtbaren Position aus weitergleiten.
+  for (const row of otherRows) {
+    shiftAnimations.get(row)?.cancel();
+    shiftAnimations.delete(row);
+  }
+  move();
+  for (const row of otherRows) {
+    const distance = previous.get(row) - row.getBoundingClientRect().top;
+    if (Math.abs(distance) < 1) continue;
+    const animation = row.animate([
+      { transform: `translate3d(0, ${distance}px, 0)` },
+      { transform: 'translate3d(0, 0, 0)' }
+    ], {
+      duration: 175,
+      easing: 'cubic-bezier(0.22, 0.70, 0.25, 1)'
+    });
+    shiftAnimations.set(row, animation);
+    animation.onfinish = () => {
+      if (shiftAnimations.get(row) === animation) shiftAnimations.delete(row);
+    };
+  }
+}
 
 function makeDragHandle(li, item, ref) {
   const handle = document.createElement('button');
@@ -912,7 +949,9 @@ function positionDragGhost(state) {
   const left = Math.max(8, Math.min(window.innerWidth - width - 8,
     state.pointerX - state.offsetX));
   const top = state.pointerY - state.offsetY;
-  state.ghost.style.transform = `translate3d(${left}px, ${top}px, 0) rotate(-2deg) scale(1.045)`;
+  state.ghost.style.transform = reducedReorderMotion.matches
+    ? `translate3d(${left}px, ${top}px, 0)`
+    : `translate3d(${left}px, ${top}px, 0) rotate(-1.5deg) scale(1.035)`;
 }
 
 function insertAtPointer(pointerY) {
@@ -921,15 +960,19 @@ function insertAtPointer(pointerY) {
   const siblings = Array.from(listElement.children)
     .filter(li => li !== state.element);
   for (const sibling of siblings) {
-    const rect = sibling.getBoundingClientRect();
-    if (pointerY < rect.top + rect.height / 2) {
+    // offsetTop bleibt auch während der FLIP-Animation an der Layoutposition.
+    const middle = listElement.getBoundingClientRect().top +
+      sibling.offsetTop + sibling.offsetHeight / 2;
+    if (pointerY < middle) {
       if (state.element.nextElementSibling !== sibling) {
-        listElement.insertBefore(state.element, sibling);
+        moveVerseSmoothly(() => listElement.insertBefore(state.element, sibling));
       }
       return;
     }
   }
-  if (listElement.lastElementChild !== state.element) listElement.append(state.element);
+  if (listElement.lastElementChild !== state.element) {
+    moveVerseSmoothly(() => listElement.append(state.element));
+  }
 }
 
 function autoScrollDrag() {
@@ -974,7 +1017,7 @@ function onPointerDragEnd(event) {
   if (moved) commitDomOrder();
   cleanUpDrag();
   if (moved) {
-    renderList();
+    // Nicht neu zeichnen: die kurzen Verschiebe-Animationen dürfen auslaufen.
     announceReorder('Vers verschoben. Neue Reihenfolge gespeichert.');
   }
 }
@@ -992,7 +1035,7 @@ function finishKeyboardDrag(save) {
   if (save) commitDomOrder();
   const id = state.id;
   cleanUpDrag();
-  renderList();
+  if (!save) renderList(); // bei Abbruch die ursprüngliche Reihenfolge wiederherstellen
   restoreHandleFocus(id);
   announceReorder(save ? 'Neue Reihenfolge gespeichert.' : 'Verschieben abgebrochen.');
 }
@@ -1019,9 +1062,9 @@ function onDragKeydown(event, element, id, ref) {
   if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
   event.preventDefault();
   if (event.key === 'ArrowUp' && element.previousElementSibling) {
-    listElement.insertBefore(element, element.previousElementSibling);
+    moveVerseSmoothly(() => listElement.insertBefore(element, element.previousElementSibling));
   } else if (event.key === 'ArrowDown' && element.nextElementSibling) {
-    listElement.insertBefore(element.nextElementSibling, element);
+    moveVerseSmoothly(() => listElement.insertBefore(element.nextElementSibling, element));
   }
   element.querySelector('.drag-handle')?.focus({preventScroll: true});
   element.scrollIntoView({block: 'nearest'});
