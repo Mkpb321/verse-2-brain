@@ -360,7 +360,8 @@ function formatReference(item) {
 let bibleIndex = null;
 let bibleBooks = null;
 let bibleState = 'loading';
-let bibleNeighbors = null;
+let bibleSequence = null;
+let biblePositions = null;
 let bibleAbbrById = null;
 
 function getVerseText(bookAbbr, chapter, verse) {
@@ -408,27 +409,24 @@ function readBibleData(payload) {
     if (index.has(key)) throw new Error(`Vers doppelt vorhanden: ${key}`);
     index.set(key, row.text);
   }
-  // Kanonische Reihenfolge für die beiden Nachbarverse; funktioniert
+  // Kanonische Reihenfolge für mehrere Kontextverse; funktioniert
   // auch an Kapitel- und Buchgrenzen und bei unsortierten JSON-Zeilen.
   const sequence = rows.map(row => ({id: row.book_id, chapter: row.chapter, verse: row.verse}));
   sequence.sort((a, b) => a.id - b.id || a.chapter - b.chapter || a.verse - b.verse);
-  const neighbors = new Map();
-  for (let i = 0; i < sequence.length; i++) {
-    const current = sequence[i];
-    neighbors.set(`${current.id}:${current.chapter}:${current.verse}`, {
-      previous: sequence[i - 1] ?? null,
-      next: sequence[i + 1] ?? null
-    });
-  }
+  const positions = new Map();
+  sequence.forEach((current, i) => {
+    positions.set(`${current.id}:${current.chapter}:${current.verse}`, i);
+  });
   const abbrById = new Map([...bookIds].map(([abbr, id]) => [id, abbr]));
-  return {bookIds, index, neighbors, abbrById};
+  return {bookIds, index, sequence, positions, abbrById};
 }
 
 function setBibleData(payload) {
   const parsed = readBibleData(payload);
   bibleBooks = parsed.bookIds;
   bibleIndex = parsed.index;
-  bibleNeighbors = parsed.neighbors;
+  bibleSequence = parsed.sequence;
+  biblePositions = parsed.positions;
   bibleAbbrById = parsed.abbrById;
   bibleState = 'ready';
   document.getElementById('data-status').hidden = true;
@@ -471,7 +469,8 @@ const detailText = document.getElementById('detail-text');
 const searchButton = document.getElementById('search-enter');
 const settingsDialog = document.getElementById('settings-dialog');
 const darkModeToggle = document.getElementById('setting-dark-mode');
-const adjacentToggle = document.getElementById('setting-adjacent-verses');
+const versesBeforeInput = document.getElementById('setting-verses-before');
+const versesAfterInput = document.getElementById('setting-verses-after');
 const detailPrevious = document.getElementById('detail-previous');
 const detailNext = document.getElementById('detail-next');
 const detailMedia = document.getElementById('detail-media');
@@ -570,28 +569,88 @@ function updateDetailMediaVisibility() {
   detailMedia.hidden = detailPlayback.hidden && detailImageWrap.hidden;
 }
 
-function showMediaPlayer(candidates, reference, requestId) {
-  if (requestId !== mediaRenderId) return;
-  const next = candidates.shift();
-  if (!next) {
-    detailPlayback.replaceChildren();
+// canPlayType prüft die Fähigkeiten des jeweiligen Browsers (wichtig auf iOS,
+// das OGG je nach Codec/Browserversion nicht wiedergeben kann). Die Prüfung
+// ist nur ein Hinweis: Ein echter Playback-Fehler wird zusätzlich abgefangen.
+const MEDIA_MIME = {
+  mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac',
+  wav: 'audio/wav', wave: 'audio/wav', ogg: 'audio/ogg',
+  oga: 'audio/ogg', opus: 'audio/ogg; codecs="opus"',
+  flac: 'audio/flac', weba: 'audio/webm', aif: 'audio/aiff',
+  aiff: 'audio/aiff', caf: 'audio/x-caf', wma: 'audio/x-ms-wma',
+  mid: 'audio/midi', midi: 'audio/midi',
+  mp4: 'video/mp4', webm: 'video/webm', ogv: 'video/ogg',
+  m4v: 'video/mp4', mov: 'video/quicktime', mkv: 'video/x-matroska',
+  avi: 'video/x-msvideo', mpeg: 'video/mpeg', mpg: 'video/mpeg',
+  '3gp': 'video/3gpp'
+};
+
+function browserCanPlay(candidate) {
+  const mediaElement = document.createElement(candidate.type);
+  const mime = MEDIA_MIME[candidate.extension];
+  // Unbekannte Formate nicht vorab ausschließen: die echte Wiedergabe prüft der Player.
+  return !mime || mediaElement.canPlayType(mime) !== '';
+}
+
+function showMediaWarning(candidate, reference) {
+  detailPlayback.replaceChildren();
+  if (!candidate) {
     detailPlayback.hidden = true;
     updateDetailMediaVisibility();
     return;
   }
-  const player = document.createElement(next.type); // audio oder video
-  player.controls = true;
-  player.preload = 'metadata';
-  player.setAttribute('aria-label',
-    `${next.type === 'audio' ? 'Audio' : 'Video'} zu ${reference}`);
-  if (next.type === 'video') player.playsInline = true;
-  player.addEventListener('error', () => {
-    if (requestId === mediaRenderId) showMediaPlayer(candidates, reference, requestId);
-  }, {once: true});
-  detailPlayback.replaceChildren(player);
+  const warning = document.createElement('p');
+  warning.className = 'media-warning';
+  warning.append(document.createTextNode(
+    `Die ${candidate.type === 'audio' ? 'Audio-' : 'Video-'}Datei (.${candidate.extension}) kann auf diesem Gerät nicht abgespielt werden. `
+  ));
+  const link = document.createElement('a');
+  link.href = candidate.url;
+  link.textContent = 'Datei öffnen';
+  link.setAttribute('aria-label', `Mediendatei zu ${reference} öffnen`);
+  warning.append(link);
+  detailPlayback.append(warning);
   detailPlayback.hidden = false;
   updateDetailMediaVisibility();
-  player.src = next.url;
+}
+
+function showMediaPlayer(candidates, reference, requestId) {
+  if (requestId !== mediaRenderId) return;
+  if (!candidates.length) {
+    showMediaWarning(null, reference);
+    return;
+  }
+  const playable = candidates.filter(browserCanPlay);
+  // Nur nicht abspielbare Formate gefunden: Die Medien-Datei nicht still
+  // verschwinden lassen, sondern kurz auf das Problem hinweisen.
+  if (!playable.length) {
+    showMediaWarning(candidates[0], reference);
+    return;
+  }
+  let nextIndex = 0;
+  const tryNext = () => {
+    if (requestId !== mediaRenderId) return;
+    if (nextIndex >= playable.length) {
+      showMediaWarning(playable[0], reference);
+      return;
+    }
+    const next = playable[nextIndex++];
+    const player = document.createElement(next.type);
+    player.controls = true;
+    player.preload = 'metadata';
+    player.setAttribute('aria-label',
+      `${next.type === 'audio' ? 'Audio' : 'Video'} zu ${reference}`);
+    if (next.type === 'video') player.playsInline = true;
+    player.addEventListener('error', () => {
+      // Fehler kann erst beim Drücken auf Play auftreten, vor allem in Safari.
+      if (requestId === mediaRenderId && detailPlayback.contains(player)) tryNext();
+    }, {once: true});
+    detailPlayback.replaceChildren(player);
+    detailPlayback.hidden = false;
+    updateDetailMediaVisibility();
+    player.src = next.url;
+  };
+  tryNext();
 }
 
 function showMediaImage(candidates, reference, requestId) {
@@ -639,19 +698,27 @@ function renderDetailMedia(reference) {
   }).catch(() => { /* Fehlende / unzugängliche Medien bleiben unsichtbar. */ });
 }
 
+// 0 unterdrückt den jeweiligen Kontext. Ältere Einstellungen mit deaktiviertem
+// Nachbarvers-Schalter werden auf 0/0 migriert (statt unerwartet 5/5 zu zeigen).
+function parseVerseCount(value, fallback) {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 0 ? Math.min(n, 9999) : fallback;
+}
+
 function loadSettings() {
-  // Neue Installationen übernehmen zunächst die Systemeinstellung.
   const defaults = {
     darkMode: window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false,
-    showAdjacentVerses: true
+    versesBefore: 5,
+    versesAfter: 5
   };
   try {
     const stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
     if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return defaults;
+    const oldCount = stored.showAdjacentVerses === false ? 0 : 5;
     return {
       darkMode: typeof stored.darkMode === 'boolean' ? stored.darkMode : defaults.darkMode,
-      showAdjacentVerses: typeof stored.showAdjacentVerses === 'boolean'
-        ? stored.showAdjacentVerses : defaults.showAdjacentVerses
+      versesBefore: parseVerseCount(stored.versesBefore, oldCount),
+      versesAfter: parseVerseCount(stored.versesAfter, oldCount)
     };
   } catch (_error) { return defaults; }
 }
@@ -662,7 +729,8 @@ function applySettings() {
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content',
     settings.darkMode ? '#181b20' : '#ffffff');
   darkModeToggle.checked = settings.darkMode;
-  adjacentToggle.checked = settings.showAdjacentVerses;
+  versesBeforeInput.value = settings.versesBefore;
+  versesAfterInput.value = settings.versesAfter;
 }
 function saveSettings() {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
@@ -682,12 +750,26 @@ darkModeToggle.addEventListener('change', () => {
   applySettings();
   saveSettings();
 });
-adjacentToggle.addEventListener('change', () => {
-  settings.showAdjacentVerses = adjacentToggle.checked;
+function updateVerseCountSetting(field, input) {
+  // Leere oder ungültige Eingabe erst beim Verlassen des Felds korrigieren.
+  if (input.value.trim() === '') return;
+  const value = parseVerseCount(input.value, null);
+  if (value === null) return;
+  settings[field] = value;
   saveSettings();
-  // Kein Seitenwechsel und keine Änderung an der gespeicherten Versliste.
   if (!detailView.hidden) renderAdjacentVerses();
-});
+}
+for (const [field, input] of [
+  ['versesBefore', versesBeforeInput], ['versesAfter', versesAfterInput]
+]) {
+  input.addEventListener('input', () => updateVerseCountSetting(field, input));
+  input.addEventListener('change', () => {
+    settings[field] = parseVerseCount(input.value, settings[field]);
+    input.value = settings[field];
+    saveSettings();
+    if (!detailView.hidden) renderAdjacentVerses();
+  });
+}
 
 function loadList() {
   try {
@@ -809,22 +891,28 @@ function renderAdjacentVerses() {
   }
   const item = verses.find(entry => entry.id === id);
   const bookId = item && bibleBooks?.get(item.book);
-  const pair = bookId !== undefined && bibleNeighbors
-    ? bibleNeighbors.get(`${bookId}:${item.chapter}:${item.verse}`) : null;
+  const position = bookId !== undefined && biblePositions
+    ? biblePositions.get(`${bookId}:${item.chapter}:${item.verse}`) : undefined;
 
-  for (const [element, neighbor] of [
-    [detailPrevious, pair?.previous], [detailNext, pair?.next]
-  ]) {
-    if (!settings.showAdjacentVerses || !neighbor || !bibleAbbrById?.has(neighbor.id)) {
+  const contexts = [
+    [detailPrevious, settings.versesBefore, 'before'],
+    [detailNext, settings.versesAfter, 'after']
+  ];
+  for (const [element, count, direction] of contexts) {
+    if (position === undefined || count === 0 || !bibleSequence) {
       element.hidden = true;
+      element.querySelector('.adjacent-text').textContent = '';
       continue;
     }
-    const book = bibleAbbrById.get(neighbor.id);
-    element.querySelector('.adjacent-reference').textContent =
-      formatReference({book, chapter: neighbor.chapter, verse: neighbor.verse});
-    element.querySelector('.adjacent-text').textContent =
-      getVerseText(book, neighbor.chapter, neighbor.verse);
-    element.hidden = false;
+    const start = direction === 'before'
+      ? Math.max(0, position - count) : position + 1;
+    const end = direction === 'before'
+      ? position : Math.min(bibleSequence.length, position + 1 + count);
+    const text = bibleSequence.slice(start, end).map(row =>
+      bibleIndex.get(`${row.id}:${row.chapter}:${row.verse}`)?.replace(/\s+/g, ' ').trim()
+    ).filter(Boolean).join(' ');
+    element.querySelector('.adjacent-text').textContent = text;
+    element.hidden = !text;
   }
 }
 

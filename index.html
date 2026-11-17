@@ -64,13 +64,11 @@
         <h1 id="detail-reference"></h1>
         <button type="button" class="icon-button settings-trigger" title="Einstellungen" aria-label="Einstellungen öffnen" aria-haspopup="dialog" aria-controls="settings-dialog">⚙</button>
       </header>
-      <aside id="detail-previous" class="adjacent-verse" aria-label="Vorheriger Vers" hidden>
-        <div class="adjacent-reference"></div>
+      <aside id="detail-previous" class="adjacent-verse" aria-label="Vorherige Verse" hidden>
         <p class="adjacent-text"></p>
       </aside>
       <p id="detail-text" class="detail-text"></p>
-      <aside id="detail-next" class="adjacent-verse" aria-label="Nächster Vers" hidden>
-        <div class="adjacent-reference"></div>
+      <aside id="detail-next" class="adjacent-verse" aria-label="Nachfolgende Verse" hidden>
         <p class="adjacent-text"></p>
       </aside>
       <div id="detail-media" class="detail-media" hidden>
@@ -89,9 +87,13 @@
       <span>Dunkelmodus</span>
       <input id="setting-dark-mode" type="checkbox" role="switch">
     </label>
-    <label class="setting-row" for="setting-adjacent-verses">
-      <span>Vorherigen / nächsten Vers anzeigen</span>
-      <input id="setting-adjacent-verses" type="checkbox" role="switch">
+    <label class="setting-row" for="setting-verses-before">
+      <span>Verse davor</span>
+      <input id="setting-verses-before" class="setting-count" type="number" inputmode="numeric" min="0" max="9999" step="1" value="5">
+    </label>
+    <label class="setting-row" for="setting-verses-after">
+      <span>Verse danach</span>
+      <input id="setting-verses-after" class="setting-count" type="number" inputmode="numeric" min="0" max="9999" step="1" value="5">
     </label>
   </dialog>
 </body>
