@@ -818,7 +818,226 @@ function detailUrl(item) {
   return `#vers/${encodeURIComponent(item.id)}`;
 }
 
+// Verschieben mit Pointer Events statt HTML5-Drag-and-drop (funktioniert auch
+// auf iOS/Android). Nur der Griff startet das Ziehen; Links bleiben klickbar.
+const reorderStatus = document.getElementById('reorder-status');
+let draggedVerse = null;
+
+function makeDragHandle(li, item, ref) {
+  const handle = document.createElement('button');
+  handle.type = 'button';
+  handle.className = 'drag-handle';
+  handle.title = `${ref} ziehen, um den Vers zu verschieben`;
+  handle.setAttribute('aria-label', `${ref} verschieben`);
+  handle.setAttribute('aria-keyshortcuts', 'Space ArrowUp ArrowDown Enter Escape');
+  handle.setAttribute('aria-describedby', 'reorder-instructions reorder-status');
+  handle.innerHTML = '<svg viewBox="0 0 18 24" aria-hidden="true" focusable="false"><circle cx="6" cy="5" r="1.7"/><circle cx="12" cy="5" r="1.7"/><circle cx="6" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="6" cy="19" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>';
+  handle.addEventListener('pointerdown', event => startPointerDrag(event, li, item.id));
+  handle.addEventListener('keydown', event => onDragKeydown(event, li, item.id, ref));
+  return handle;
+}
+
+function commitDomOrder() {
+  const byId = new Map(verses.map(verse => [verse.id, verse]));
+  verses = Array.from(listElement.children, li => byId.get(li.dataset.verseId))
+    .filter(Boolean);
+  saveList();
+}
+
+function restoreHandleFocus(id) {
+  const li = Array.from(listElement.children)
+    .find(element => element.dataset.verseId === id);
+  li?.querySelector('.drag-handle')?.focus({preventScroll: true});
+}
+
+function stopPointerListeners() {
+  window.removeEventListener('pointermove', onPointerDragMove);
+  window.removeEventListener('pointerup', onPointerDragEnd);
+  window.removeEventListener('pointercancel', onPointerDragCancel);
+  window.removeEventListener('blur', onPointerDragCancel);
+}
+
+function cleanUpDrag() {
+  const state = draggedVerse;
+  if (!state) return;
+  stopPointerListeners();
+  if (state.scrollFrame != null) cancelAnimationFrame(state.scrollFrame);
+  state.ghost?.remove();
+  state.element.classList.remove('drag-placeholder', 'keyboard-dragging');
+  document.body.classList.remove('dragging-verse');
+  draggedVerse = null;
+}
+
+function announceReorder(text) {
+  reorderStatus.textContent = text;
+}
+
+function startPointerDrag(event, element, id) {
+  // Rechtsklick und zusätzliche Finger ignorieren.
+  if (draggedVerse || event.button !== 0 || event.isPrimary === false) return;
+  const rect = element.getBoundingClientRect();
+  draggedVerse = {
+    mode: 'pointer', pointerId: event.pointerId, element, id,
+    startX: event.clientX, startY: event.clientY,
+    pointerX: event.clientX, pointerY: event.clientY,
+    offsetX: event.clientX - rect.left,
+    offsetY: event.clientY - rect.top,
+    rect, started: false, ghost: null, scrollFrame: null
+  };
+  window.addEventListener('pointermove', onPointerDragMove, {passive: false});
+  window.addEventListener('pointerup', onPointerDragEnd);
+  window.addEventListener('pointercancel', onPointerDragCancel);
+  window.addEventListener('blur', onPointerDragCancel);
+}
+
+function liftPointerVerse(state) {
+  const ghost = state.element.cloneNode(true);
+  ghost.classList.remove('drag-placeholder');
+  ghost.classList.add('verse-drag-ghost');
+  ghost.removeAttribute('data-verse-id');
+  ghost.setAttribute('aria-hidden', 'true');
+  ghost.querySelectorAll('a, button').forEach(node => { node.tabIndex = -1; });
+  ghost.style.width = `${Math.min(state.rect.width, window.innerWidth - 16)}px`;
+  document.body.append(ghost);
+  state.ghost = ghost;
+  state.started = true;
+  state.element.classList.add('drag-placeholder');
+  document.body.classList.add('dragging-verse');
+  positionDragGhost(state);
+}
+
+function positionDragGhost(state) {
+  if (!state.ghost) return;
+  const width = state.ghost.getBoundingClientRect().width;
+  const left = Math.max(8, Math.min(window.innerWidth - width - 8,
+    state.pointerX - state.offsetX));
+  const top = state.pointerY - state.offsetY;
+  state.ghost.style.transform = `translate3d(${left}px, ${top}px, 0) rotate(-2deg) scale(1.045)`;
+}
+
+function insertAtPointer(pointerY) {
+  const state = draggedVerse;
+  if (!state || state.mode !== 'pointer' || !state.started) return;
+  const siblings = Array.from(listElement.children)
+    .filter(li => li !== state.element);
+  for (const sibling of siblings) {
+    const rect = sibling.getBoundingClientRect();
+    if (pointerY < rect.top + rect.height / 2) {
+      if (state.element.nextElementSibling !== sibling) {
+        listElement.insertBefore(state.element, sibling);
+      }
+      return;
+    }
+  }
+  if (listElement.lastElementChild !== state.element) listElement.append(state.element);
+}
+
+function autoScrollDrag() {
+  const state = draggedVerse;
+  if (!state || state.mode !== 'pointer' || !state.started) return;
+  state.scrollFrame = null;
+  const edge = Math.min(85, Math.max(48, window.innerHeight * .13));
+  const y = state.pointerY;
+  let speed = 0;
+  if (y < edge) speed = -Math.min(21, 4 + ((edge - y) / edge) * 17);
+  if (y > window.innerHeight - edge) {
+    speed = Math.min(21, 4 + ((y - (window.innerHeight - edge)) / edge) * 17);
+  }
+  if (speed !== 0) {
+    window.scrollBy(0, speed);
+    insertAtPointer(y);
+    state.scrollFrame = requestAnimationFrame(autoScrollDrag);
+  }
+}
+
+function onPointerDragMove(event) {
+  const state = draggedVerse;
+  if (!state || state.mode !== 'pointer' || event.pointerId !== state.pointerId) return;
+  state.pointerX = event.clientX;
+  state.pointerY = event.clientY;
+  if (!state.started) {
+    if (Math.hypot(event.clientX - state.startX, event.clientY - state.startY) < 5) return;
+    liftPointerVerse(state);
+  }
+  event.preventDefault();
+  positionDragGhost(state);
+  insertAtPointer(state.pointerY);
+  if (state.scrollFrame == null) {
+    state.scrollFrame = requestAnimationFrame(autoScrollDrag);
+  }
+}
+
+function onPointerDragEnd(event) {
+  const state = draggedVerse;
+  if (!state || state.mode !== 'pointer' || event.pointerId !== state.pointerId) return;
+  const moved = state.started;
+  if (moved) commitDomOrder();
+  cleanUpDrag();
+  if (moved) {
+    renderList();
+    announceReorder('Vers verschoben. Neue Reihenfolge gespeichert.');
+  }
+}
+
+function onPointerDragCancel() {
+  if (!draggedVerse || draggedVerse.mode !== 'pointer') return;
+  const wasDragging = draggedVerse.started;
+  cleanUpDrag();
+  if (wasDragging) renderList(); // nicht gespeicherte Position zurücksetzen
+}
+
+function finishKeyboardDrag(save) {
+  const state = draggedVerse;
+  if (!state || state.mode !== 'keyboard') return;
+  if (save) commitDomOrder();
+  const id = state.id;
+  cleanUpDrag();
+  renderList();
+  restoreHandleFocus(id);
+  announceReorder(save ? 'Neue Reihenfolge gespeichert.' : 'Verschieben abgebrochen.');
+}
+
+function onDragKeydown(event, element, id, ref) {
+  const toggle = event.code === 'Space' || event.key === ' ' || event.key === 'Enter';
+  if (toggle) {
+    event.preventDefault();
+    if (draggedVerse?.mode === 'keyboard' && draggedVerse.id === id) {
+      finishKeyboardDrag(true);
+    } else if (!draggedVerse) {
+      draggedVerse = {mode: 'keyboard', element, id};
+      element.classList.add('keyboard-dragging');
+      announceReorder(`${ref} aufgenommen. Mit Pfeil hoch und runter verschieben, mit Enter ablegen, mit Escape abbrechen.`);
+    }
+    return;
+  }
+  if (!draggedVerse || draggedVerse.mode !== 'keyboard' || draggedVerse.id !== id) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    finishKeyboardDrag(false);
+    return;
+  }
+  if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+  event.preventDefault();
+  if (event.key === 'ArrowUp' && element.previousElementSibling) {
+    listElement.insertBefore(element, element.previousElementSibling);
+  } else if (event.key === 'ArrowDown' && element.nextElementSibling) {
+    listElement.insertBefore(element.nextElementSibling, element);
+  }
+  element.querySelector('.drag-handle')?.focus({preventScroll: true});
+  element.scrollIntoView({block: 'nearest'});
+  const position = Array.from(listElement.children).indexOf(element) + 1;
+  announceReorder(`${ref}: Position ${position} von ${verses.length}.`);
+}
+
+document.addEventListener('keydown', event => {
+  if (draggedVerse?.mode === 'keyboard' && event.key === 'Escape') {
+    event.preventDefault();
+    finishKeyboardDrag(false);
+  }
+});
+
 function renderList() {
+  if (draggedVerse) cleanUpDrag();
   countElement.textContent = `${verses.length} ${verses.length === 1 ? 'Vers' : 'Verse'}`;
   emptyState.hidden = verses.length > 0;
   document.getElementById('collapse-all').disabled = verses.length === 0;
@@ -832,6 +1051,7 @@ function renderList() {
     const ref = formatReference(item);
     const li = document.createElement('li');
     li.className = 'verse-item';
+    li.dataset.verseId = item.id;
 
     const row = document.createElement('div');
     row.className = 'verse-row';
@@ -851,16 +1071,7 @@ function renderList() {
           saveList();
           renderList();
         }, false, 'toggle'),
-      actionButton('↑', `${ref} nach oben verschieben`, () => {
-        [verses[index - 1], verses[index]] = [verses[index], verses[index - 1]];
-        saveList();
-        renderList();
-      }, index === 0),
-      actionButton('↓', `${ref} nach unten verschieben`, () => {
-        [verses[index], verses[index + 1]] = [verses[index + 1], verses[index]];
-        saveList();
-        renderList();
-      }, index === verses.length - 1),
+      makeDragHandle(li, item, ref),
       actionButton('×', `${ref} löschen`, () => {
         verses.splice(index, 1);
         saveList();
