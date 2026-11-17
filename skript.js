@@ -1,18 +1,18 @@
 /*
- * Bibelstellen – Version 1 (ohne Bibeltext-Datenbank)
- * Alle Daten und Funktionen liegen absichtlich in dieser einen JS-Datei.
- * Ausgabe-Abkürzungen nach den Loccumer Richtlinien:
- * https://www.sbc-standard.de/spezifikation/sbc-mab-titel-spezifikation/normlisten/abkuerzungen-bibelstellen/
- *
- * SPÄTERE BIBELTEXT-ANBINDUNG:
- * Die einzige auszutauschende Stelle ist getVerseText(bookAbbr, chapter, verse).
- * Im Moment liefert sie für jede Stelle denselben Lorem-ipsum-Beispieltext.
+ * Verse2Brain (V2B) – SLT 2000
+ * Bibeltext wird zur Laufzeit aus "./slt2000.json" geladen (nicht im ZIP).
+ * Erwartetes Format: { tables: { book: { rows: [...] }, verse: { rows: [...] } } }
+ * Vers-IDs nutzen book_id / chapter / verse; Buchnamen werden über das
+ * bestehende deutsche/englische Aliasverzeichnis auf Loccumer-Kürzel abgebildet.
+ * Die Datenquelle kann später ausgetauscht werden, ohne die UI zu verändern.
  */
 
 'use strict';
 
 const STORAGE_KEY = 'bibelstellen-liste-v1';
-const DEMO_TEXT = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.';
+const BIBLE_FILE = './slt2000.json';
+// Bestehender localStorage-Schlüssel bleibt unverändert, damit vorherige
+// Listen, Reihenfolge und Ein-/Ausklappzustände übernommen werden.
 
 // Das sichtbare Kürzel ist immer der erste Parameter. Nach dem Kürzel folgen
 // geläufige deutsche/englische Namen, Kurzformen und historische Schreibweisen.
@@ -354,11 +354,91 @@ function formatReference(item) {
   return `${item.book} ${item.chapter},${item.verse}`;
 }
 
-// VORGESEHENER ERWEITERUNGSPUNKT FÜR DIE SPÄTERE VERSDATENBANK.
-// Parameter sind bereits normalisiert, z. B. ('Joh', 3, 16).
+// Die JSON-Datei enthält numerische book_id-Werte und 31.171 Einzelverse.
+// Der Index wird nur einmal erstellt; alle Verse teilen sich eine Textquelle.
+let bibleIndex = null;
+let bibleBooks = null;
+let bibleState = 'loading';
+
 function getVerseText(bookAbbr, chapter, verse) {
-  void bookAbbr; void chapter; void verse;
-  return DEMO_TEXT;
+  if (!bibleIndex || !bibleBooks) return bibleState === 'error'
+    ? 'SLT 2000 konnte nicht geladen werden.' : 'Bibeltext wird geladen …';
+  const id = bibleBooks.get(bookAbbr);
+  if (id === undefined) return 'Dieser Vers ist in der SLT 2000 nicht enthalten.';
+  return bibleIndex.get(`${id}:${chapter}:${verse}`) ??
+    'Dieser Vers ist in der SLT 2000 nicht enthalten.';
+}
+
+function hasVerse(bookAbbr, chapter, verse) {
+  const id = bibleBooks?.get(bookAbbr);
+  return id !== undefined && bibleIndex?.has(`${id}:${chapter}:${verse}`) === true;
+}
+
+function readBibleData(payload) {
+  const books = payload?.tables?.book?.rows;
+  const rows = payload?.tables?.verse?.rows;
+  if (!Array.isArray(books) || !Array.isArray(rows) || !books.length || !rows.length) {
+    throw new Error('Die Datei besitzt keine gültigen book-/verse-Tabellen.');
+  }
+
+  const bookIds = new Map();
+  const seenIds = new Set();
+  for (const row of books) {
+    if (!Number.isInteger(row?.id) || typeof row.name !== 'string' || seenIds.has(row.id)) {
+      throw new Error('Ungültige Buch-IDs in der SLT-2000-Datei.');
+    }
+    const found = findBook(row.name);
+    if (!found || found.fuzzy || bookIds.has(found.abbr)) {
+      throw new Error(`Bibelbuch nicht eindeutig zuordenbar: ${row.name}`);
+    }
+    seenIds.add(row.id);
+    bookIds.set(found.abbr, row.id);
+  }
+
+  const index = new Map();
+  for (const row of rows) {
+    if (!seenIds.has(row?.book_id) || !Number.isInteger(row.chapter) || row.chapter < 1 ||
+        !Number.isInteger(row.verse) || row.verse < 1 || typeof row.text !== 'string') {
+      throw new Error('Ungültige Versdaten in der SLT-2000-Datei.');
+    }
+    const key = `${row.book_id}:${row.chapter}:${row.verse}`;
+    if (index.has(key)) throw new Error(`Vers doppelt vorhanden: ${key}`);
+    index.set(key, row.text);
+  }
+  return {bookIds, index};
+}
+
+function setBibleData(payload) {
+  const parsed = readBibleData(payload);
+  bibleBooks = parsed.bookIds;
+  bibleIndex = parsed.index;
+  bibleState = 'ready';
+  document.getElementById('data-status').hidden = true;
+  document.getElementById('data-recovery').hidden = true;
+  document.getElementById('data-status').classList.remove('error');
+  document.getElementById('search-enter').disabled = false;
+  renderRoute();
+}
+
+function showBibleLoadError(reason) {
+  bibleState = 'error';
+  const status = document.getElementById('data-status');
+  status.hidden = false;
+  status.classList.add('error');
+  status.textContent = `slt2000.json nicht geladen (${reason}). Datei neben index.html ablegen und über einen Webserver öffnen – oder unten manuell auswählen.`;
+  document.getElementById('data-recovery').hidden = false;
+  document.getElementById('search-enter').disabled = true;
+  renderRoute();
+}
+
+async function loadBibleFile() {
+  try {
+    const response = await fetch(BIBLE_FILE);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    setBibleData(await response.json());
+  } catch (error) {
+    showBibleLoadError(error instanceof Error ? error.message : 'Lesefehler');
+  }
 }
 
 const listView = document.getElementById('list-view');
@@ -370,6 +450,7 @@ const inputElement = document.getElementById('verse-search');
 const messageElement = document.getElementById('message');
 const detailReference = document.getElementById('detail-reference');
 const detailText = document.getElementById('detail-text');
+const searchButton = document.getElementById('search-enter');
 
 function loadList() {
   try {
@@ -495,14 +576,14 @@ function renderRoute() {
       detailView.hidden = false;
       detailReference.textContent = formatReference(item);
       detailText.textContent = getVerseText(item.book, item.chapter, item.verse);
-      document.title = `${formatReference(item)} – Bibelstellen`;
+      document.title = `${formatReference(item)} – Verse2Brain (V2B)`;
       window.scrollTo(0, 0);
       return;
     }
   }
   listView.hidden = false;
   detailView.hidden = true;
-  document.title = 'Bibelstellen';
+  document.title = 'Verse2Brain · V2B';
   renderList();
 }
 
@@ -512,9 +593,19 @@ function newId() {
 
 document.getElementById('search-form').addEventListener('submit', event => {
   event.preventDefault();
+  if (bibleState !== 'ready') {
+    showMessage('Bibeltext ist noch nicht geladen.', true);
+    return;
+  }
   const result = parseReference(inputElement.value);
   if (result.error) {
     showMessage(result.error, true);
+    inputElement.focus();
+    return;
+  }
+
+  if (!hasVerse(result.book, result.chapter, result.verse)) {
+    showMessage(`${formatReference(result)} ist in der SLT 2000 nicht enthalten.`, true);
     inputElement.focus();
     return;
   }
@@ -551,5 +642,24 @@ document.getElementById('clear-all').addEventListener('click', () => {
   saveList(); renderList(); showMessage('');
 });
 
+document.getElementById('choose-json').addEventListener('click', () => {
+  document.getElementById('json-file').click();
+});
+
+document.getElementById('json-file').addEventListener('change', async event => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  try {
+    setBibleData(JSON.parse(await file.text()));
+    showMessage('SLT 2000 geladen.');
+  } catch (error) {
+    showBibleLoadError(error instanceof Error ? error.message : 'Ungültige JSON-Datei');
+  } finally {
+    event.target.value = '';
+  }
+});
+
 window.addEventListener('hashchange', renderRoute);
+searchButton.disabled = true;
 renderRoute();
+loadBibleFile();

@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#ffffff">
-  <meta name="description" content="Schlichte, lokal gespeicherte Liste einzelner Bibelverse.">
-  <title>Bibelstellen</title>
+  <meta name="description" content="Verse2Brain (V2B) – kompakte Bibelvers-Liste mit Texten aus SLT 2000.">
+  <title>Verse2Brain · V2B</title>
   <link rel="stylesheet" href="styles.css">
   <script src="skript.js" defer></script>
 </head>
@@ -13,7 +13,7 @@
   <main class="app">
     <section id="list-view" aria-labelledby="app-title">
       <header class="app-header">
-        <h1 id="app-title">Bibelstellen</h1>
+        <h1 id="app-title">Verse2Brain <span class="short-name">V2B</span></h1>
         <span id="verse-count" class="count">0 Verse</span>
       </header>
 
@@ -30,9 +30,14 @@
           aria-describedby="message"
           required
         >
-        <button type="submit" class="enter-button" title="Vers zur Liste hinzufügen">Enter</button>
+        <button type="submit" id="search-enter" class="enter-button" title="Vers zur Liste hinzufügen">Enter</button>
       </form>
       <div id="message" role="status" aria-live="polite" class="message" hidden></div>
+      <div id="data-status" role="status" aria-live="polite" class="data-status">Lade SLT 2000 …</div>
+      <div id="data-recovery" class="data-recovery" hidden>
+        <button id="choose-json" type="button">slt2000.json wählen</button>
+        <input id="json-file" type="file" accept=".json,application/json" hidden aria-label="SLT-2000-JSON-Datei auswählen">
+      </div>
 
       <nav class="toolbar" aria-label="Alle Einträge bearbeiten">
         <button id="collapse-all" type="button">Alle −</button>

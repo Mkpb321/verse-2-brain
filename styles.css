@@ -28,6 +28,7 @@ button:disabled { cursor: default; opacity: .35; }
   margin-bottom: 10px;
 }
 h1 { margin: 0; font-size: 1.15rem; font-weight: 700; }
+.short-name { margin-left: 3px; color: #777; font-size: .7rem; font-weight: normal; }
 .count { color: #555; font-size: .78rem; white-space: nowrap; }
 
 .search { display: flex; gap: 5px; align-items: stretch; }
@@ -70,6 +71,10 @@ button:focus-visible, a:focus-visible { outline: 2px solid #111; outline-offset:
 .enter-button { min-width: 65px; font-weight: 700; }
 .message { margin: 7px 0 0; color: #555; font-size: .81rem; }
 .message.error { color: #9a0000; }
+.data-status { margin: 7px 0 0; font-size: .81rem; color: #555; line-height: 1.4; }
+.data-status.error { color: #9a0000; }
+.data-recovery { margin: 6px 0 0; }
+.data-recovery button { font-size: .78rem; min-height: 28px; }
 
 .toolbar {
   display: flex;
