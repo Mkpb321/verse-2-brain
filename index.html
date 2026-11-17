@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="description" content="Schlichte, lokal gespeicherte Liste einzelner Bibelverse.">
+  <title>Bibelstellen</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="skript.js" defer></script>
+</head>
+<body>
+  <main class="app">
+    <section id="list-view" aria-labelledby="app-title">
+      <header class="app-header">
+        <h1 id="app-title">Bibelstellen</h1>
+        <span id="verse-count" class="count">0 Verse</span>
+      </header>
+
+      <form id="search-form" class="search" autocomplete="off">
+        <label for="verse-search" class="sr-only">Bibelstelle eingeben</label>
+        <input
+          id="verse-search"
+          name="reference"
+          type="text"
+          placeholder="Joh 3,16 / 1. Mose 1:1"
+          enterkeyhint="done"
+          autocapitalize="off"
+          spellcheck="false"
+          aria-describedby="message"
+          required
+        >
+        <button type="submit" class="enter-button" title="Vers zur Liste hinzufügen">Enter</button>
+      </form>
+      <div id="message" role="status" aria-live="polite" class="message" hidden></div>
+
+      <nav class="toolbar" aria-label="Alle Einträge bearbeiten">
+        <button id="collapse-all" type="button">Alle −</button>
+        <button id="expand-all" type="button">Alle +</button>
+        <button id="clear-all" type="button">Alle löschen</button>
+      </nav>
+
+      <ol id="verse-list" class="verse-list" aria-label="Gespeicherte Bibelstellen"></ol>
+      <p id="empty-state" class="empty">Noch keine Bibelstellen.</p>
+    </section>
+
+    <section id="detail-view" class="detail-view" aria-labelledby="detail-reference" hidden>
+      <header class="detail-header">
+        <a class="retro-button back-button" href="#liste">← Liste</a>
+        <h1 id="detail-reference"></h1>
+      </header>
+      <p id="detail-text" class="detail-text"></p>
+    </section>
+  </main>
+</body>
+</html>
