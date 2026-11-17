@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#ffffff">
   <meta name="description" content="Verse2Brain (V2B) – kompakte Bibelvers-Liste mit Texten aus SLT 2000.">
-  <title>Verse2Brain · V2B</title>
+  <title>Verse2Brain</title>
   <link rel="stylesheet" href="styles.css">
   <script src="skript.js" defer></script>
 </head>
@@ -13,8 +13,11 @@
   <main class="app">
     <section id="list-view" aria-labelledby="app-title">
       <header class="app-header">
-        <h1 id="app-title">Verse2Brain <span class="short-name">V2B</span></h1>
-        <span id="verse-count" class="count">0 Verse</span>
+        <h1 id="app-title">Verse2Brain</h1>
+        <div class="header-actions">
+          <span id="verse-count" class="count">0 Verse</span>
+          <button type="button" class="icon-button settings-trigger" title="Einstellungen" aria-label="Einstellungen öffnen" aria-haspopup="dialog" aria-controls="settings-dialog">⚙</button>
+        </div>
       </header>
 
       <form id="search-form" class="search" autocomplete="off">
@@ -30,7 +33,7 @@
           aria-describedby="message"
           required
         >
-        <button type="submit" id="search-enter" class="enter-button" title="Vers zur Liste hinzufügen">Enter</button>
+        <button type="submit" id="search-enter" class="enter-button" title="Vers zur Liste hinzufügen" aria-label="Vers zur Liste hinzufügen">↵</button>
       </form>
       <div id="message" role="status" aria-live="polite" class="message" hidden></div>
       <div id="data-status" role="status" aria-live="polite" class="data-status">Lade SLT 2000 …</div>
@@ -51,11 +54,35 @@
 
     <section id="detail-view" class="detail-view" aria-labelledby="detail-reference" hidden>
       <header class="detail-header">
-        <a class="retro-button back-button" href="#liste">← Liste</a>
+        <a class="retro-button back-button" href="#liste" aria-label="Zurück zur Liste" title="Zurück zur Liste">←</a>
         <h1 id="detail-reference"></h1>
+        <button type="button" class="icon-button settings-trigger" title="Einstellungen" aria-label="Einstellungen öffnen" aria-haspopup="dialog" aria-controls="settings-dialog">⚙</button>
       </header>
+      <aside id="detail-previous" class="adjacent-verse" aria-label="Vorheriger Vers" hidden>
+        <div class="adjacent-reference"></div>
+        <p class="adjacent-text"></p>
+      </aside>
       <p id="detail-text" class="detail-text"></p>
+      <aside id="detail-next" class="adjacent-verse" aria-label="Nächster Vers" hidden>
+        <div class="adjacent-reference"></div>
+        <p class="adjacent-text"></p>
+      </aside>
     </section>
   </main>
+
+  <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
+    <header class="settings-header">
+      <h2 id="settings-title">Einstellungen</h2>
+      <button type="button" id="settings-close" class="icon-button" aria-label="Einstellungen schließen" title="Schließen">×</button>
+    </header>
+    <label class="setting-row" for="setting-dark-mode">
+      <span>Dunkelmodus</span>
+      <input id="setting-dark-mode" type="checkbox" role="switch">
+    </label>
+    <label class="setting-row" for="setting-adjacent-verses">
+      <span>Vorherigen / nächsten Vers anzeigen</span>
+      <input id="setting-adjacent-verses" type="checkbox" role="switch">
+    </label>
+  </dialog>
 </body>
 </html>

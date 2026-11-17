@@ -10,6 +10,7 @@
 'use strict';
 
 const STORAGE_KEY = 'bibelstellen-liste-v1';
+const SETTINGS_KEY = 'verse2brain-settings-v1';
 const BIBLE_FILE = './slt2000.json';
 // Bestehender localStorage-Schlüssel bleibt unverändert, damit vorherige
 // Listen, Reihenfolge und Ein-/Ausklappzustände übernommen werden.
@@ -359,6 +360,8 @@ function formatReference(item) {
 let bibleIndex = null;
 let bibleBooks = null;
 let bibleState = 'loading';
+let bibleNeighbors = null;
+let bibleAbbrById = null;
 
 function getVerseText(bookAbbr, chapter, verse) {
   if (!bibleIndex || !bibleBooks) return bibleState === 'error'
@@ -405,13 +408,28 @@ function readBibleData(payload) {
     if (index.has(key)) throw new Error(`Vers doppelt vorhanden: ${key}`);
     index.set(key, row.text);
   }
-  return {bookIds, index};
+  // Kanonische Reihenfolge für die beiden Nachbarverse; funktioniert
+  // auch an Kapitel- und Buchgrenzen und bei unsortierten JSON-Zeilen.
+  const sequence = rows.map(row => ({id: row.book_id, chapter: row.chapter, verse: row.verse}));
+  sequence.sort((a, b) => a.id - b.id || a.chapter - b.chapter || a.verse - b.verse);
+  const neighbors = new Map();
+  for (let i = 0; i < sequence.length; i++) {
+    const current = sequence[i];
+    neighbors.set(`${current.id}:${current.chapter}:${current.verse}`, {
+      previous: sequence[i - 1] ?? null,
+      next: sequence[i + 1] ?? null
+    });
+  }
+  const abbrById = new Map([...bookIds].map(([abbr, id]) => [id, abbr]));
+  return {bookIds, index, neighbors, abbrById};
 }
 
 function setBibleData(payload) {
   const parsed = readBibleData(payload);
   bibleBooks = parsed.bookIds;
   bibleIndex = parsed.index;
+  bibleNeighbors = parsed.neighbors;
+  bibleAbbrById = parsed.abbrById;
   bibleState = 'ready';
   document.getElementById('data-status').hidden = true;
   document.getElementById('data-recovery').hidden = true;
@@ -451,6 +469,61 @@ const messageElement = document.getElementById('message');
 const detailReference = document.getElementById('detail-reference');
 const detailText = document.getElementById('detail-text');
 const searchButton = document.getElementById('search-enter');
+const settingsDialog = document.getElementById('settings-dialog');
+const darkModeToggle = document.getElementById('setting-dark-mode');
+const adjacentToggle = document.getElementById('setting-adjacent-verses');
+const detailPrevious = document.getElementById('detail-previous');
+const detailNext = document.getElementById('detail-next');
+
+function loadSettings() {
+  // Neue Installationen übernehmen zunächst die Systemeinstellung.
+  const defaults = {
+    darkMode: window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false,
+    showAdjacentVerses: true
+  };
+  try {
+    const stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
+    if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return defaults;
+    return {
+      darkMode: typeof stored.darkMode === 'boolean' ? stored.darkMode : defaults.darkMode,
+      showAdjacentVerses: typeof stored.showAdjacentVerses === 'boolean'
+        ? stored.showAdjacentVerses : defaults.showAdjacentVerses
+    };
+  } catch (_error) { return defaults; }
+}
+
+const settings = loadSettings();
+function applySettings() {
+  document.documentElement.dataset.theme = settings.darkMode ? 'dark' : 'light';
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content',
+    settings.darkMode ? '#181b20' : '#ffffff');
+  darkModeToggle.checked = settings.darkMode;
+  adjacentToggle.checked = settings.showAdjacentVerses;
+}
+function saveSettings() {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
+  catch (_error) { showMessage('Einstellungen konnten nicht gespeichert werden.', true); }
+}
+applySettings();
+
+for (const trigger of document.querySelectorAll('.settings-trigger')) {
+  trigger.addEventListener('click', () => settingsDialog.showModal());
+}
+document.getElementById('settings-close').addEventListener('click', () => settingsDialog.close());
+settingsDialog.addEventListener('click', event => {
+  if (event.target === settingsDialog) settingsDialog.close();
+});
+darkModeToggle.addEventListener('change', () => {
+  settings.darkMode = darkModeToggle.checked;
+  applySettings();
+  saveSettings();
+});
+adjacentToggle.addEventListener('change', () => {
+  settings.showAdjacentVerses = adjacentToggle.checked;
+  saveSettings();
+  // Kein Seitenwechsel und keine Änderung an der gespeicherten Versliste.
+  if (!detailView.hidden) renderAdjacentVerses();
+});
 
 function loadList() {
   try {
@@ -564,6 +637,33 @@ function renderList() {
   listElement.replaceChildren(fragment);
 }
 
+function renderAdjacentVerses() {
+  const match = location.hash.match(/^#vers\/(.+)$/);
+  let id = '';
+  if (match) {
+    try { id = decodeURIComponent(match[1]); } catch (_error) { /* ungültiger Link */ }
+  }
+  const item = verses.find(entry => entry.id === id);
+  const bookId = item && bibleBooks?.get(item.book);
+  const pair = bookId !== undefined && bibleNeighbors
+    ? bibleNeighbors.get(`${bookId}:${item.chapter}:${item.verse}`) : null;
+
+  for (const [element, neighbor] of [
+    [detailPrevious, pair?.previous], [detailNext, pair?.next]
+  ]) {
+    if (!settings.showAdjacentVerses || !neighbor || !bibleAbbrById?.has(neighbor.id)) {
+      element.hidden = true;
+      continue;
+    }
+    const book = bibleAbbrById.get(neighbor.id);
+    element.querySelector('.adjacent-reference').textContent =
+      formatReference({book, chapter: neighbor.chapter, verse: neighbor.verse});
+    element.querySelector('.adjacent-text').textContent =
+      getVerseText(book, neighbor.chapter, neighbor.verse);
+    element.hidden = false;
+  }
+}
+
 function renderRoute() {
   const match = location.hash.match(/^#vers\/(.+)$/);
   if (match) {
@@ -576,14 +676,15 @@ function renderRoute() {
       detailView.hidden = false;
       detailReference.textContent = formatReference(item);
       detailText.textContent = getVerseText(item.book, item.chapter, item.verse);
-      document.title = `${formatReference(item)} – Verse2Brain (V2B)`;
+      renderAdjacentVerses();
+      document.title = `${formatReference(item)} – Verse2Brain`;
       window.scrollTo(0, 0);
       return;
     }
   }
   listView.hidden = false;
   detailView.hidden = true;
-  document.title = 'Verse2Brain · V2B';
+  document.title = 'Verse2Brain';
   renderList();
 }
 
