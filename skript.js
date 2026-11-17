@@ -474,6 +474,170 @@ const darkModeToggle = document.getElementById('setting-dark-mode');
 const adjacentToggle = document.getElementById('setting-adjacent-verses');
 const detailPrevious = document.getElementById('detail-previous');
 const detailNext = document.getElementById('detail-next');
+const detailMedia = document.getElementById('detail-media');
+const detailPlayback = document.getElementById('detail-playback');
+const detailImageWrap = document.getElementById('detail-image-wrap');
+
+/*
+ * Lokale Medien: Der Dateiname entspricht exakt der sichtbaren Loccumer-Stelle,
+ * z. B. "./media/1 Kor 5,5.mp3". Es gibt keine Verzeichnis-API im Browser;
+ * deshalb prüfen wir die bekannten Endungen auf Existenz. Die Reihenfolge
+ * ist die feste Priorität, wenn mehrere Dateien desselben Typs existieren.
+ * Audio hat Vorrang vor Video; ein Bild kann zusätzlich gezeigt werden.
+ * Der Browser bestimmt, welche Codecs er tatsächlich wiedergeben kann.
+ */
+const MEDIA_DIRECTORY = './media/';
+const AUDIO_EXTENSIONS = [
+  'mp3', 'm4a', 'aac', 'wav', 'wave', 'ogg', 'oga', 'opus', 'flac',
+  'weba', 'aif', 'aiff', 'caf', 'wma', 'mid', 'midi'
+];
+const VIDEO_EXTENSIONS = [
+  'mp4', 'webm', 'ogv', 'm4v', 'mov', 'mkv', 'avi', 'mpeg', 'mpg', '3gp'
+];
+const IMAGE_EXTENSIONS = [
+  'jpg', 'jpeg', 'png', 'webp', 'gif', 'avif', 'svg', 'apng', 'bmp',
+  'heic', 'heif', 'tif', 'tiff', 'ico', 'jxl'
+];
+let mediaRenderId = 0;
+
+function mediaFileUrl(reference, extension) {
+  return `${MEDIA_DIRECTORY}${encodeURIComponent(reference)}.${extension}`;
+}
+
+// Lokale file://-Seiten dürfen fetch() je nach Browser nicht verwenden.
+// Dort versuchen wir, die Dateien direkt mit den passenden Medien-Elementen
+// zu laden; über HTTP(S) genügt für die Existenzprüfung ein HEAD-Request.
+function probeLocalMedia(url, type) {
+  return new Promise(resolve => {
+    const element = type === 'image' ? new Image() : document.createElement(type);
+    const success = type === 'image' ? 'load' : 'loadedmetadata';
+    let finished = false;
+    const finish = available => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timeout);
+      element.removeEventListener(success, onSuccess);
+      element.removeEventListener('error', onError);
+      if (type !== 'image') {
+        element.removeAttribute('src');
+        element.load();
+      }
+      resolve(available);
+    };
+    const onSuccess = () => finish(true);
+    const onError = () => finish(false);
+    const timeout = setTimeout(() => finish(false), 4500);
+    element.addEventListener(success, onSuccess);
+    element.addEventListener('error', onError);
+    if (type !== 'image') element.preload = 'metadata';
+    element.src = url;
+    if (type !== 'image') element.load();
+  });
+}
+
+async function mediaExists(url, type) {
+  if (location.protocol === 'file:') return probeLocalMedia(url, type);
+  try {
+    let response = await fetch(url, {method: 'HEAD'});
+    if (response.status === 405 || response.status === 501) {
+      // Hosts ohne HEAD-Unterstützung: Inhalt mit kleinem Range-GET prüfen.
+      response = await fetch(url, {
+        method: 'GET', headers: {Range: 'bytes=0-0'}
+      });
+      // Bei Hosts ohne Range-Unterstützung keine ganze Mediendatei laden.
+      if (response.body) await response.body.cancel();
+    }
+    if (!response.ok) return false;
+    // Manche SPA-Hosts beantworten unbekannte Pfade mit index.html (HTTP 200).
+    const contentType = (response.headers.get('content-type') || '').toLowerCase();
+    if (contentType.includes('text/html')) return false;
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+async function existingMediaFiles(reference, extensions, type) {
+  // Parallel prüfen, aber die ursprüngliche Endungs-Priorität beibehalten.
+  const matches = await Promise.all(extensions.map(async extension => {
+    const url = mediaFileUrl(reference, extension);
+    return await mediaExists(url, type) ? {url, type, extension} : null;
+  }));
+  return matches.filter(Boolean);
+}
+
+function updateDetailMediaVisibility() {
+  detailMedia.hidden = detailPlayback.hidden && detailImageWrap.hidden;
+}
+
+function showMediaPlayer(candidates, reference, requestId) {
+  if (requestId !== mediaRenderId) return;
+  const next = candidates.shift();
+  if (!next) {
+    detailPlayback.replaceChildren();
+    detailPlayback.hidden = true;
+    updateDetailMediaVisibility();
+    return;
+  }
+  const player = document.createElement(next.type); // audio oder video
+  player.controls = true;
+  player.preload = 'metadata';
+  player.setAttribute('aria-label',
+    `${next.type === 'audio' ? 'Audio' : 'Video'} zu ${reference}`);
+  if (next.type === 'video') player.playsInline = true;
+  player.addEventListener('error', () => {
+    if (requestId === mediaRenderId) showMediaPlayer(candidates, reference, requestId);
+  }, {once: true});
+  detailPlayback.replaceChildren(player);
+  detailPlayback.hidden = false;
+  updateDetailMediaVisibility();
+  player.src = next.url;
+}
+
+function showMediaImage(candidates, reference, requestId) {
+  if (requestId !== mediaRenderId) return;
+  const next = candidates.shift();
+  if (!next) {
+    detailImageWrap.replaceChildren();
+    detailImageWrap.hidden = true;
+    updateDetailMediaVisibility();
+    return;
+  }
+  const image = document.createElement('img');
+  image.alt = `Bild zu ${reference}`;
+  image.decoding = 'async';
+  image.addEventListener('load', () => {
+    if (requestId !== mediaRenderId) return;
+    detailImageWrap.replaceChildren(image);
+    detailImageWrap.hidden = false;
+    updateDetailMediaVisibility();
+  }, {once: true});
+  image.addEventListener('error', () => {
+    if (requestId === mediaRenderId) showMediaImage(candidates, reference, requestId);
+  }, {once: true});
+  image.src = next.url;
+}
+
+function renderDetailMedia(reference) {
+  const requestId = ++mediaRenderId;
+  detailMedia.hidden = true;
+  detailPlayback.hidden = true;
+  detailImageWrap.hidden = true;
+  detailPlayback.replaceChildren();
+  detailImageWrap.replaceChildren();
+
+  // Medien nur für einen geöffneten Listeneintrag suchen, niemals für
+  // sämtliche Bibelstellen oder für die Hauptliste.
+  Promise.all([
+    existingMediaFiles(reference, AUDIO_EXTENSIONS, 'audio'),
+    existingMediaFiles(reference, VIDEO_EXTENSIONS, 'video'),
+    existingMediaFiles(reference, IMAGE_EXTENSIONS, 'image')
+  ]).then(([audioFiles, videoFiles, imageFiles]) => {
+    if (requestId !== mediaRenderId) return; // Nutzer hat Vers gewechselt
+    showMediaPlayer([...audioFiles, ...videoFiles], reference, requestId);
+    showMediaImage(imageFiles, reference, requestId);
+  }).catch(() => { /* Fehlende / unzugängliche Medien bleiben unsichtbar. */ });
+}
 
 function loadSettings() {
   // Neue Installationen übernehmen zunächst die Systemeinstellung.
@@ -677,11 +841,18 @@ function renderRoute() {
       detailReference.textContent = formatReference(item);
       detailText.textContent = getVerseText(item.book, item.chapter, item.verse);
       renderAdjacentVerses();
+      renderDetailMedia(formatReference(item));
       document.title = `${formatReference(item)} – Verse2Brain`;
       window.scrollTo(0, 0);
       return;
     }
   }
+  ++mediaRenderId; // Ausstehende Medien-Prüfungen der Einzelansicht verwerfen.
+  detailPlayback.replaceChildren(); // Eventuelle laufende Wiedergabe stoppen.
+  detailImageWrap.replaceChildren();
+  detailMedia.hidden = true;
+  detailPlayback.hidden = true;
+  detailImageWrap.hidden = true;
   listView.hidden = false;
   detailView.hidden = true;
   document.title = 'Verse2Brain';

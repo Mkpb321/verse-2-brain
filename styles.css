@@ -138,6 +138,19 @@ button:focus-visible, a:focus-visible, input:focus-visible {
 #detail-previous { border-bottom: 1px solid var(--line); padding-bottom: 13px; margin-bottom: 18px; }
 #detail-next { border-top: 1px solid var(--line); padding-top: 13px; margin-top: 18px; }
 
+/* Medien nur in der Einzelansicht. Keine zusätzliche Karte oder Beschriftung. */
+.detail-media { margin-top: 16px; }
+.detail-playback { margin-bottom: 14px; }
+.detail-playback audio, .detail-playback video {
+  display: block; width: 100%; max-width: 100%;
+}
+.detail-playback audio { height: 46px; }
+.detail-playback video { max-height: 65vh; background: #0e1013; }
+.detail-image-wrap img {
+  display: block; width: auto; height: auto; max-width: 100%; max-height: 80vh;
+  object-fit: contain;
+}
+
 .settings-dialog {
   position: fixed;
   inset: max(10px, env(safe-area-inset-top)) max(10px, calc((100vw - 760px) / 2 + 10px)) auto auto;
