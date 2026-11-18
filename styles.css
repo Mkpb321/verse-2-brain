@@ -24,6 +24,7 @@
   --drag-surface: #f9fafc;
   --drag-placeholder: #e8ebf0;
   --drag-outline: #a6abb5;
+  --learning-mistake: #b32031;
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -50,6 +51,7 @@
   --drag-surface: #2a333e;
   --drag-placeholder: #252d37;
   --drag-outline: #7f91a9;
+  --learning-mistake: #ff747d;
 }
 
 * { box-sizing: border-box; }
@@ -176,6 +178,34 @@ button:focus-visible, a:focus-visible, input:focus-visible {
 .detail-header h1 { flex: 1; min-width: 0; font-size: 1.18rem; }
 .back-button { width: 38px; min-width: 38px; height: 34px; padding: 0; font-size: 1.35rem; white-space: nowrap; }
 .detail-text { margin: 0; font-size: 1.08rem; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Der aktive Lernmodus ersetzt nur den Zielvers; der übrige Retro-Stil bleibt erhalten. */
+.learning-modes { display: flex; flex-wrap: wrap; gap: 5px; margin: 2px 0 18px; }
+.mode-button { min-height: 36px; font-size: .88rem; }
+.mode-button[aria-pressed="true"] {
+  background: var(--btn-pressed);
+  border-color: var(--btn-bottom) var(--btn-top) var(--btn-top) var(--btn-bottom);
+  font-weight: 700;
+}
+.learning-practice { min-width: 0; }
+.learning-words {
+  min-height: 3.5rem; margin: 0 0 15px;
+  font-size: 1.08rem; line-height: 1.75;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.learning-words .word-mistake { color: var(--learning-mistake); }
+#learning-input {
+  display: block; width: 100%; min-height: 42px;
+  padding: 8px 10px; border: 1px solid var(--input-border); border-radius: 0;
+  background: var(--input-bg); color: var(--text);
+  font-size: 16px; outline-offset: 2px;
+}
+#learning-input::placeholder { color: var(--placeholder); }
+.learning-footer {
+  display: flex; gap: 10px; align-items: center; justify-content: space-between;
+  min-height: 38px; margin-top: 8px;
+}
+.learning-progress { color: var(--muted); font-size: .82rem; font-variant-numeric: tabular-nums; }
+#learning-restart { min-height: 36px; }
 .adjacent-verse {
   color: var(--adjacent); font-size: .91rem; line-height: 1.55;
   overflow-wrap: anywhere;

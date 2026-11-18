@@ -466,6 +466,13 @@ const inputElement = document.getElementById('verse-search');
 const messageElement = document.getElementById('message');
 const detailReference = document.getElementById('detail-reference');
 const detailText = document.getElementById('detail-text');
+const modeReadButton = document.getElementById('mode-read');
+const modeInitialsButton = document.getElementById('mode-initials');
+const learningPractice = document.getElementById('learning-practice');
+const learningWordsElement = document.getElementById('learning-words');
+const learningInput = document.getElementById('learning-input');
+const learningProgress = document.getElementById('learning-progress');
+const learningRestart = document.getElementById('learning-restart');
 const searchButton = document.getElementById('search-enter');
 const settingsDialog = document.getElementById('settings-dialog');
 const darkModeToggle = document.getElementById('setting-dark-mode');
@@ -1159,6 +1166,13 @@ function renderList() {
 }
 
 function renderAdjacentVerses() {
+  // Beim Auswendiglernen niemals die benachbarten Verse als Lösungshinweis zeigen.
+  // Das gilt auch, wenn die Einstellungen während des Lernens geändert werden.
+  if (learningMode === 'initials') {
+    detailPrevious.hidden = true;
+    detailNext.hidden = true;
+    return;
+  }
   const match = location.hash.match(/^#vers\/(.+)$/);
   let id = '';
   if (match) {
@@ -1191,6 +1205,122 @@ function renderAdjacentVerses() {
   }
 }
 
+/*
+ * Lernmodus "Anfangsbuchstaben": Es wird immer nur der nächste Wortanfang
+ * verglichen (ohne Groß-/Kleinschreibung). Zwischenräume und Satzzeichen
+ * werden beim Aufdecken automatisch aus dem Originaltext übernommen.
+ * Nach einem Fehler ist das aufgedeckte Wort rot; Fehlversuche bleiben
+ * ansonsten unsichtbar. Die Übung speichert keine Eingaben im Browser.
+ */
+const INITIAL_WORD_PATTERN = /[\p{L}\p{M}\p{N}]+(?:['’\-‐‑][\p{L}\p{M}\p{N}]+)*/gu;
+let activeDetailId = null;
+let learningMode = 'read';
+let learningSourceText = '';
+let learningWordMatches = [];
+let learningIndex = 0;
+let learningCurrentMistake = false;
+let learningErrors = [];
+
+function parseLearningWords(text) {
+  return Array.from(text.matchAll(INITIAL_WORD_PATTERN), match => ({
+    start: match.index,
+    end: match.index + match[0].length,
+    word: match[0],
+    initial: Array.from(match[0])[0].normalize('NFC').toLocaleLowerCase('de-DE')
+  }));
+}
+
+function resetLearningPractice() {
+  learningSourceText = detailText.textContent;
+  learningWordMatches = parseLearningWords(learningSourceText);
+  learningIndex = 0;
+  learningCurrentMistake = false;
+  learningErrors = [];
+  learningInput.value = '';
+  renderLearningPractice();
+}
+
+function renderLearningPractice() {
+  const visibleWords = learningWordMatches.slice(0, learningIndex);
+  const fragment = document.createDocumentFragment();
+  let cursor = 0;
+  for (let i = 0; i < visibleWords.length; i++) {
+    const current = visibleWords[i];
+    fragment.append(document.createTextNode(learningSourceText.slice(cursor, current.start)));
+    const span = document.createElement('span');
+    span.textContent = current.word;
+    if (learningErrors[i]) span.className = 'word-mistake';
+    fragment.append(span);
+    cursor = current.end;
+  }
+  // Satzzeichen und Leerraum folgen auf das soeben aufgedeckte Wort.
+  if (visibleWords.length) {
+    const upcoming = learningWordMatches[learningIndex];
+    fragment.append(document.createTextNode(
+      learningSourceText.slice(cursor, upcoming ? upcoming.start : undefined)
+    ));
+  }
+  learningWordsElement.replaceChildren(fragment);
+
+  const total = learningWordMatches.length;
+  const done = learningIndex === total;
+  learningProgress.textContent = done
+    ? `Geschafft – ${total} ${total === 1 ? 'Wort' : 'Wörter'}`
+    : `${learningIndex} / ${total} Wörter`;
+  learningInput.hidden = done;
+  learningRestart.hidden = !done;
+}
+
+function setLearningMode(mode) {
+  if (mode === 'initials' && bibleState !== 'ready') return;
+  learningMode = mode;
+  const training = mode === 'initials';
+  modeReadButton.setAttribute('aria-pressed', String(!training));
+  modeInitialsButton.setAttribute('aria-pressed', String(training));
+  detailText.hidden = training;
+  learningPractice.hidden = !training;
+  // Nur im Lesemodus die konfigurierten Verse davor und danach anzeigen.
+  renderAdjacentVerses();
+  if (training) {
+    resetLearningPractice();
+    // Direkter Knopfdruck gilt bei iOS als Nutzerinteraktion und öffnet die Tastatur.
+    learningInput.focus({preventScroll: true});
+  }
+}
+
+modeReadButton.addEventListener('click', () => setLearningMode('read'));
+modeInitialsButton.addEventListener('click', () => setLearningMode('initials'));
+learningRestart.addEventListener('click', () => {
+  resetLearningPractice();
+  learningInput.focus({preventScroll: true});
+});
+
+function handleLearningCharacters(value) {
+  for (const raw of Array.from(value.normalize('NFC'))) {
+    if (!/[\p{L}\p{N}]/u.test(raw) || learningIndex >= learningWordMatches.length) continue;
+    const expected = learningWordMatches[learningIndex].initial;
+    if (raw.toLocaleLowerCase('de-DE') === expected) {
+      learningErrors.push(learningCurrentMistake);
+      learningIndex += 1;
+      learningCurrentMistake = false;
+      renderLearningPractice();
+    } else {
+      learningCurrentMistake = true;
+    }
+  }
+}
+learningInput.addEventListener('input', event => {
+  if (event.isComposing) return;
+  const value = learningInput.value;
+  learningInput.value = '';
+  handleLearningCharacters(value);
+});
+learningInput.addEventListener('compositionend', () => {
+  const value = learningInput.value;
+  learningInput.value = '';
+  handleLearningCharacters(value);
+});
+
 function renderRoute() {
   const match = location.hash.match(/^#vers\/(.+)$/);
   if (match) {
@@ -1202,7 +1332,15 @@ function renderRoute() {
       listView.hidden = true;
       detailView.hidden = false;
       detailReference.textContent = formatReference(item);
-      detailText.textContent = getVerseText(item.book, item.chapter, item.verse);
+      const verseText = getVerseText(item.book, item.chapter, item.verse);
+      const changedVerse = activeDetailId !== item.id || detailText.textContent !== verseText;
+      detailText.textContent = verseText;
+      if (changedVerse) {
+        activeDetailId = item.id;
+        setLearningMode('read');
+      }
+      modeInitialsButton.disabled = bibleState !== 'ready' ||
+        !hasVerse(item.book, item.chapter, item.verse);
       renderAdjacentVerses();
       renderDetailMedia(formatReference(item));
       document.title = `${formatReference(item)} – Verse2Brain`;
@@ -1210,6 +1348,8 @@ function renderRoute() {
       return;
     }
   }
+  activeDetailId = null;
+  setLearningMode('read');
   ++mediaRenderId; // Ausstehende Medien-Prüfungen der Einzelansicht verwerfen.
   detailPlayback.replaceChildren(); // Eventuelle laufende Wiedergabe stoppen.
   detailImageWrap.replaceChildren();

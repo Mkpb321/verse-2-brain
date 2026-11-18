@@ -66,10 +66,23 @@
         <h1 id="detail-reference"></h1>
         <button type="button" class="icon-button settings-trigger" title="Einstellungen" aria-label="Einstellungen öffnen" aria-haspopup="dialog" aria-controls="settings-dialog">⚙</button>
       </header>
+      <nav class="learning-modes" aria-label="Ansicht und Lernmodi">
+        <button type="button" id="mode-read" class="mode-button" aria-pressed="true">Lesen</button>
+        <button type="button" id="mode-initials" class="mode-button" aria-pressed="false">Anfangsbuchstaben</button>
+      </nav>
       <aside id="detail-previous" class="adjacent-verse" aria-label="Vorherige Verse" hidden>
         <p class="adjacent-text"></p>
       </aside>
       <p id="detail-text" class="detail-text"></p>
+      <section id="learning-practice" class="learning-practice" aria-label="Anfangsbuchstaben lernen" hidden>
+        <p id="learning-words" class="learning-words" aria-label="Aufgedeckte Wörter"></p>
+        <label class="sr-only" for="learning-input">Anfangsbuchstabe des nächsten Wortes</label>
+        <input id="learning-input" type="text" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-describedby="learning-progress" placeholder="Nächsten Anfangsbuchstaben tippen …">
+        <div class="learning-footer">
+          <span id="learning-progress" class="learning-progress" role="status" aria-live="polite"></span>
+          <button id="learning-restart" type="button" hidden>Restart ↻</button>
+        </div>
+      </section>
       <aside id="detail-next" class="adjacent-verse" aria-label="Nachfolgende Verse" hidden>
         <p class="adjacent-text"></p>
       </aside>
