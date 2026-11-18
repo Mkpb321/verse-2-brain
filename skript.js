@@ -469,6 +469,8 @@ const detailText = document.getElementById('detail-text');
 const searchButton = document.getElementById('search-enter');
 const settingsDialog = document.getElementById('settings-dialog');
 const darkModeToggle = document.getElementById('setting-dark-mode');
+const playbackToggle = document.getElementById('setting-show-playback');
+const imagesToggle = document.getElementById('setting-show-images');
 const versesBeforeInput = document.getElementById('setting-verses-before');
 const versesAfterInput = document.getElementById('setting-verses-after');
 const detailPrevious = document.getElementById('detail-previous');
@@ -687,14 +689,16 @@ function renderDetailMedia(reference) {
 
   // Medien nur für einen geöffneten Listeneintrag suchen, niemals für
   // sämtliche Bibelstellen oder für die Hauptliste.
+  // Deaktivierte Medienarten werden weder gesucht noch geladen.
+  if (!settings.showPlayback && !settings.showImages) return;
   Promise.all([
-    existingMediaFiles(reference, AUDIO_EXTENSIONS, 'audio'),
-    existingMediaFiles(reference, VIDEO_EXTENSIONS, 'video'),
-    existingMediaFiles(reference, IMAGE_EXTENSIONS, 'image')
+    settings.showPlayback ? existingMediaFiles(reference, AUDIO_EXTENSIONS, 'audio') : Promise.resolve([]),
+    settings.showPlayback ? existingMediaFiles(reference, VIDEO_EXTENSIONS, 'video') : Promise.resolve([]),
+    settings.showImages ? existingMediaFiles(reference, IMAGE_EXTENSIONS, 'image') : Promise.resolve([])
   ]).then(([audioFiles, videoFiles, imageFiles]) => {
-    if (requestId !== mediaRenderId) return; // Nutzer hat Vers gewechselt
-    showMediaPlayer([...audioFiles, ...videoFiles], reference, requestId);
-    showMediaImage(imageFiles, reference, requestId);
+    if (requestId !== mediaRenderId) return; // Nutzer hat Vers oder Einstellung gewechselt
+    if (settings.showPlayback) showMediaPlayer([...audioFiles, ...videoFiles], reference, requestId);
+    if (settings.showImages) showMediaImage(imageFiles, reference, requestId);
   }).catch(() => { /* Fehlende / unzugängliche Medien bleiben unsichtbar. */ });
 }
 
@@ -708,6 +712,8 @@ function parseVerseCount(value, fallback) {
 function loadSettings() {
   const defaults = {
     darkMode: window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false,
+    showPlayback: true,
+    showImages: true,
     versesBefore: 5,
     versesAfter: 5
   };
@@ -717,6 +723,8 @@ function loadSettings() {
     const oldCount = stored.showAdjacentVerses === false ? 0 : 5;
     return {
       darkMode: typeof stored.darkMode === 'boolean' ? stored.darkMode : defaults.darkMode,
+      showPlayback: typeof stored.showPlayback === 'boolean' ? stored.showPlayback : true,
+      showImages: typeof stored.showImages === 'boolean' ? stored.showImages : true,
       versesBefore: parseVerseCount(stored.versesBefore, oldCount),
       versesAfter: parseVerseCount(stored.versesAfter, oldCount)
     };
@@ -729,6 +737,8 @@ function applySettings() {
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content',
     settings.darkMode ? '#181b20' : '#ffffff');
   darkModeToggle.checked = settings.darkMode;
+  playbackToggle.checked = settings.showPlayback;
+  imagesToggle.checked = settings.showImages;
   versesBeforeInput.value = settings.versesBefore;
   versesAfterInput.value = settings.versesAfter;
 }
@@ -750,6 +760,17 @@ darkModeToggle.addEventListener('change', () => {
   applySettings();
   saveSettings();
 });
+// Änderungen wirken sofort in der geöffneten Einzelansicht. Alte Player werden
+// entfernt und laufende Medienabfragen über mediaRenderId entwertet.
+for (const [field, toggle] of [
+  ['showPlayback', playbackToggle], ['showImages', imagesToggle]
+]) {
+  toggle.addEventListener('change', () => {
+    settings[field] = toggle.checked;
+    saveSettings();
+    if (!detailView.hidden) renderDetailMedia(detailReference.textContent);
+  });
+}
 function updateVerseCountSetting(field, input) {
   // Leere oder ungültige Eingabe erst beim Verlassen des Felds korrigieren.
   if (input.value.trim() === '') return;
