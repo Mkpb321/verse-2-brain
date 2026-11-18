@@ -14,7 +14,7 @@ Eine schlanke, mobilfreundliche Bibelvers-Liste mit Texten der **Schlachter 2000
 - **Liste:** `▸/▾` klappt einzelne Verse auf/zu, `×` löscht sie. Am **Sechs-Punkte-Griff** per Maus oder Touch verschieben; mit Tastatur: Leertaste, Pfeiltasten, Enter. Die Leiste steuert alle Einträge.
 - **Einzelansicht:** Vers anklicken; `←` führt zurück. Nur **Lesen** zeigt die konfigurierten Nachbarverse. Die drei Lernmodi verbergen sie:
   - **Anfangsbuchstaben tippen:** Jeweils den ersten Buchstaben des nächsten Wortes eingeben. Nach einem Fehler wird das richtig aufgedeckte Wort rot; Satzzeichen erscheinen automatisch. Am Ende **Restart** drücken.
-  - **Wort für Wort:** Mit **Nächstes Wort** nacheinander den Vers aufdecken, dann **Restart**.
+  - **Wort für Wort:** Einfach **irgendwo tippen oder klicken**, um jeweils das nächste Wort aufzudecken; am Ende **Restart**.
   - **Anfangsbuchstaben anzeigen:** Nur die Initialen mit Satzzeichen sehen, den Vers selbst aufsagen und bei Bedarf über **Text anzeigen** kontrollieren.
 - **Einstellungen (`⚙`):** Darkmode, Anzahl der Verse davor/danach (0 = keine), Checkboxen **Audio** (auch Video) und **Bild**. Liste, Reihenfolge, Klappzustände und Einstellungen bleiben im Browser gespeichert.
 
@@ -29,6 +29,6 @@ media/
   Joh 3,16.mp3
 ```
 
-Medien erscheinen nur in der Einzelansicht **unter den Nachbarversen**. Fehlen sie oder sind sie in den Einstellungen ausgeschaltet, wird nichts angezeigt. Bei mehreren Formaten wählt die App das erste vom Browser unterstützte Audio-/Videoformat bzw. das erste ladbare Bild. Für iPhones vorzugsweise **M4A oder MP3** statt OGG verwenden. `favicon/` enthält die App-Icons.
+Medien erscheinen ausschließlich im Modus **Lesen**, in der Einzelansicht **unter den Nachbarversen**. In allen Lernmodi werden Audio, Video und Bilder ausgeblendet und nicht geladen. Fehlen sie oder sind sie in den Einstellungen ausgeschaltet, wird nichts angezeigt. Bei mehreren Formaten wählt die App das erste vom Browser unterstützte Audio-/Videoformat bzw. das erste ladbare Bild. Für iPhones vorzugsweise **M4A oder MP3** statt OGG verwenden. `favicon/` enthält die App-Icons.
 
 **Hinweis:** Medien, JSON und Einstellungen verbleiben lokal bzw. auf deinem eigenen Webserver; es gibt kein Benutzerkonto oder Backend. Prüfe die Nutzungsrechte deiner Bibeltexte und Medien vor einer Veröffentlichung.

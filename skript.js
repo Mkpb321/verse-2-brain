@@ -473,7 +473,6 @@ const modeInitialsHintButton = document.getElementById('mode-initials-hint');
 const wordByWordPractice = document.getElementById('word-by-word-practice');
 const wordByWordWords = document.getElementById('word-by-word-words');
 const wordByWordProgress = document.getElementById('word-by-word-progress');
-const wordByWordNext = document.getElementById('word-by-word-next');
 const wordByWordRestart = document.getElementById('word-by-word-restart');
 const initialsHintPractice = document.getElementById('initials-hint-practice');
 const initialsHintText = document.getElementById('initials-hint-text');
@@ -697,18 +696,24 @@ function showMediaImage(candidates, reference, requestId) {
   image.src = next.url;
 }
 
-function renderDetailMedia(reference) {
-  const requestId = ++mediaRenderId;
+function clearDetailMedia() {
+  // Laufende Medien und Suchabfragen sofort beenden, sobald der Lernmodus startet.
+  ++mediaRenderId;
   detailMedia.hidden = true;
   detailPlayback.hidden = true;
   detailImageWrap.hidden = true;
   detailPlayback.replaceChildren();
   detailImageWrap.replaceChildren();
+}
+
+function renderDetailMedia(reference) {
+  clearDetailMedia();
+  const requestId = mediaRenderId;
 
   // Medien nur für einen geöffneten Listeneintrag suchen, niemals für
   // sämtliche Bibelstellen oder für die Hauptliste.
   // Deaktivierte Medienarten werden weder gesucht noch geladen.
-  if (!settings.showPlayback && !settings.showImages) return;
+  if (learningMode !== 'read' || !settings.showPlayback && !settings.showImages) return;
   Promise.all([
     settings.showPlayback ? existingMediaFiles(reference, AUDIO_EXTENSIONS, 'audio') : Promise.resolve([]),
     settings.showPlayback ? existingMediaFiles(reference, VIDEO_EXTENSIONS, 'video') : Promise.resolve([]),
@@ -786,7 +791,7 @@ for (const [field, toggle] of [
   toggle.addEventListener('change', () => {
     settings[field] = toggle.checked;
     saveSettings();
-    if (!detailView.hidden) renderDetailMedia(detailReference.textContent);
+    if (!detailView.hidden && learningMode === 'read') renderDetailMedia(detailReference.textContent);
   });
 }
 function updateVerseCountSetting(field, input) {
@@ -1289,8 +1294,8 @@ function renderLearningPractice() {
   learningRestart.hidden = !done;
 }
 
-// Wort für Wort: Ein Tastendruck deckt genau das nächste Wort inklusive
-// direkt anschließender Satzzeichen auf. Am Ende wird Restart angeboten.
+// Wort für Wort: Ein Tap/Klick auf die Seite deckt das nächste Wort mitsamt
+// Satzzeichen auf. Bedienknöpfe, Einstellungen und Links bleiben unberührt.
 function resetWordByWordPractice() {
   resetLearningWords();
   wordRevealIndex = 0;
@@ -1303,22 +1308,41 @@ function renderWordByWordPractice() {
   const done = wordRevealIndex === total;
   wordByWordProgress.textContent = done
     ? `Geschafft – ${total} ${total === 1 ? 'Wort' : 'Wörter'}`
-    : `${wordRevealIndex} / ${total} Wörter`;
-  wordByWordNext.hidden = done;
+    : `${wordRevealIndex} / ${total} Wörter · Tippen zum Aufdecken`;
   wordByWordRestart.hidden = !done;
 }
 
-wordByWordNext.addEventListener('click', () => {
-  if (learningMode !== 'word-by-word') return;
-  if (wordRevealIndex < learningWordMatches.length) {
-    wordRevealIndex += 1;
-    renderWordByWordPractice();
-    if (wordByWordNext.hidden) wordByWordRestart.focus({preventScroll: true});
+function revealNextWord() {
+  if (learningMode !== 'word-by-word' || detailView.hidden) return;
+  if (wordRevealIndex >= learningWordMatches.length) return;
+  wordRevealIndex += 1;
+  renderWordByWordPractice();
+  if (wordRevealIndex === learningWordMatches.length) {
+    wordByWordRestart.focus({preventScroll: true});
+  }
+}
+
+// Auch ein Tap auf freie Fläche neben / unter dem Text funktioniert.
+// Interaktive Elemente dürfen dabei nicht versehentlich eine Aufdeckung auslösen.
+document.addEventListener('click', event => {
+  if (learningMode !== 'word-by-word' || detailView.hidden || settingsDialog.open) return;
+  if (event.target instanceof Element && event.target.closest(
+    'button, a, input, textarea, select, summary, dialog, [role="button"]'
+  )) return;
+  revealNextWord();
+});
+
+// Ohne sichtbaren "Nächstes Wort"-Knopf auch mit der Tastatur bedienbar.
+wordByWordPractice.addEventListener('keydown', event => {
+  if (event.target !== wordByWordPractice) return;
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    revealNextWord();
   }
 });
 wordByWordRestart.addEventListener('click', () => {
   resetWordByWordPractice();
-  wordByWordNext.focus({preventScroll: true});
+  wordByWordPractice.focus({preventScroll: true});
 });
 
 // Anfangsbuchstaben anzeigen: Der vollständige Vers bleibt verborgen;
@@ -1351,9 +1375,10 @@ initialsHintToggle.addEventListener('click', () => {
   initialsHintToggle.setAttribute('aria-expanded', String(show));
 });
 
-function setLearningMode(mode) {
+function setLearningMode(mode, refreshMedia = true) {
   if (!['read', 'initials', 'word-by-word', 'initials-hint'].includes(mode)) return;
   if (mode !== 'read' && bibleState !== 'ready') return;
+  const previousMode = learningMode;
   learningMode = mode;
   modeReadButton.setAttribute('aria-pressed', String(mode === 'read'));
   modeInitialsButton.setAttribute('aria-pressed', String(mode === 'initials'));
@@ -1363,15 +1388,19 @@ function setLearningMode(mode) {
   learningPractice.hidden = mode !== 'initials';
   wordByWordPractice.hidden = mode !== 'word-by-word';
   initialsHintPractice.hidden = mode !== 'initials-hint';
-  // Kontextverse sind ausschließlich im Lesemodus sichtbar.
+  // Nachbarverse und Medien sind ausschließlich im Lesemodus sichtbar.
   renderAdjacentVerses();
+  if (mode !== 'read') clearDetailMedia();
+  else if (refreshMedia && previousMode !== 'read' && !detailView.hidden) {
+    renderDetailMedia(detailReference.textContent);
+  }
   if (mode === 'initials') {
     resetLearningPractice();
     // Ein direkter Knopfdruck erlaubt auch auf iOS das Öffnen der Tastatur.
     learningInput.focus({preventScroll: true});
   } else if (mode === 'word-by-word') {
     resetWordByWordPractice();
-    wordByWordNext.focus({preventScroll: true});
+    wordByWordPractice.focus({preventScroll: true});
   } else if (mode === 'initials-hint') {
     resetInitialsHintPractice();
   }
@@ -1428,7 +1457,7 @@ function renderRoute() {
       detailText.textContent = verseText;
       if (changedVerse) {
         activeDetailId = item.id;
-        setLearningMode('read');
+        setLearningMode('read', false);
       }
       const unavailable = bibleState !== 'ready' ||
         !hasVerse(item.book, item.chapter, item.verse);
@@ -1443,13 +1472,8 @@ function renderRoute() {
     }
   }
   activeDetailId = null;
-  setLearningMode('read');
-  ++mediaRenderId; // Ausstehende Medien-Prüfungen der Einzelansicht verwerfen.
-  detailPlayback.replaceChildren(); // Eventuelle laufende Wiedergabe stoppen.
-  detailImageWrap.replaceChildren();
-  detailMedia.hidden = true;
-  detailPlayback.hidden = true;
-  detailImageWrap.hidden = true;
+  setLearningMode('read', false);
+  clearDetailMedia();
   listView.hidden = false;
   detailView.hidden = true;
   document.title = 'Verse2Brain';
