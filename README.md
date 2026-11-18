@@ -12,7 +12,10 @@ Eine schlanke, mobilfreundliche Bibelvers-Liste mit Texten der **Schlachter 2000
 
 - **Vers hinzufügen:** Stelle ins Suchfeld eingeben, z. B. `Joh 3,16`, `1. Mose 1:1` oder `1 Kor 5,5`, und `↵` drücken. Abkürzungen, deutsche/englische Namen und Tippfehler werden berücksichtigt.
 - **Liste:** `▸/▾` klappt einzelne Verse auf/zu, `×` löscht sie. Am **Sechs-Punkte-Griff** per Maus oder Touch verschieben; mit Tastatur: Leertaste, Pfeiltasten, Enter. Die Leiste steuert alle Einträge.
-- **Einzelansicht:** Vers anklicken; `←` führt zurück. Im Lesemodus zeigt grauer Fließtext die Nachbarverse; im Lernmodus sind sie ausgeblendet. Über **Lesen / Anfangsbuchstaben** den Modus wechseln: Immer den ersten Buchstaben des nächsten Wortes tippen, um es aufzudecken. Satzzeichen erscheinen automatisch, nach einem Fehlversuch wird das Wort rot. **Restart** startet nach dem letzten Wort neu.
+- **Einzelansicht:** Vers anklicken; `←` führt zurück. Nur **Lesen** zeigt die konfigurierten Nachbarverse. Die drei Lernmodi verbergen sie:
+  - **Anfangsbuchstaben tippen:** Jeweils den ersten Buchstaben des nächsten Wortes eingeben. Nach einem Fehler wird das richtig aufgedeckte Wort rot; Satzzeichen erscheinen automatisch. Am Ende **Restart** drücken.
+  - **Wort für Wort:** Mit **Nächstes Wort** nacheinander den Vers aufdecken, dann **Restart**.
+  - **Anfangsbuchstaben anzeigen:** Nur die Initialen mit Satzzeichen sehen, den Vers selbst aufsagen und bei Bedarf über **Text anzeigen** kontrollieren.
 - **Einstellungen (`⚙`):** Darkmode, Anzahl der Verse davor/danach (0 = keine), Checkboxen **Audio** (auch Video) und **Bild**. Liste, Reihenfolge, Klappzustände und Einstellungen bleiben im Browser gespeichert.
 
 ## Eigene Medien

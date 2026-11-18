@@ -468,6 +468,17 @@ const detailReference = document.getElementById('detail-reference');
 const detailText = document.getElementById('detail-text');
 const modeReadButton = document.getElementById('mode-read');
 const modeInitialsButton = document.getElementById('mode-initials');
+const modeWordByWordButton = document.getElementById('mode-word-by-word');
+const modeInitialsHintButton = document.getElementById('mode-initials-hint');
+const wordByWordPractice = document.getElementById('word-by-word-practice');
+const wordByWordWords = document.getElementById('word-by-word-words');
+const wordByWordProgress = document.getElementById('word-by-word-progress');
+const wordByWordNext = document.getElementById('word-by-word-next');
+const wordByWordRestart = document.getElementById('word-by-word-restart');
+const initialsHintPractice = document.getElementById('initials-hint-practice');
+const initialsHintText = document.getElementById('initials-hint-text');
+const initialsHintToggle = document.getElementById('initials-hint-toggle');
+const initialsHintSolution = document.getElementById('initials-hint-solution');
 const learningPractice = document.getElementById('learning-practice');
 const learningWordsElement = document.getElementById('learning-words');
 const learningInput = document.getElementById('learning-input');
@@ -1168,7 +1179,7 @@ function renderList() {
 function renderAdjacentVerses() {
   // Beim Auswendiglernen niemals die benachbarten Verse als Lösungshinweis zeigen.
   // Das gilt auch, wenn die Einstellungen während des Lernens geändert werden.
-  if (learningMode === 'initials') {
+  if (learningMode !== 'read') {
     detailPrevious.hidden = true;
     detailNext.hidden = true;
     return;
@@ -1206,11 +1217,9 @@ function renderAdjacentVerses() {
 }
 
 /*
- * Lernmodus "Anfangsbuchstaben": Es wird immer nur der nächste Wortanfang
- * verglichen (ohne Groß-/Kleinschreibung). Zwischenräume und Satzzeichen
- * werden beim Aufdecken automatisch aus dem Originaltext übernommen.
- * Nach einem Fehler ist das aufgedeckte Wort rot; Fehlversuche bleiben
- * ansonsten unsichtbar. Die Übung speichert keine Eingaben im Browser.
+ * Lernmodi: Alle arbeiten mit den Wörtern des Originalverses.
+ * Satzzeichen und Zwischenräume werden beim Aufdecken automatisch übernommen.
+ * Die Übungsfortschritte sind flüchtig und werden beim Wechsel des Modus zurückgesetzt.
  */
 const INITIAL_WORD_PATTERN = /[\p{L}\p{M}\p{N}]+(?:['’\-‐‑][\p{L}\p{M}\p{N}]+)*/gu;
 let activeDetailId = null;
@@ -1220,6 +1229,7 @@ let learningWordMatches = [];
 let learningIndex = 0;
 let learningCurrentMistake = false;
 let learningErrors = [];
+let wordRevealIndex = 0;
 
 function parseLearningWords(text) {
   return Array.from(text.matchAll(INITIAL_WORD_PATTERN), match => ({
@@ -1230,9 +1240,37 @@ function parseLearningWords(text) {
   }));
 }
 
-function resetLearningPractice() {
+function resetLearningWords() {
   learningSourceText = detailText.textContent;
   learningWordMatches = parseLearningWords(learningSourceText);
+}
+
+function revealedWordsFragment(count, errors = []) {
+  const fragment = document.createDocumentFragment();
+  let cursor = 0;
+  for (let i = 0; i < count; i++) {
+    const current = learningWordMatches[i];
+    fragment.append(document.createTextNode(learningSourceText.slice(cursor, current.start)));
+    const span = document.createElement('span');
+    span.textContent = current.word;
+    if (errors[i]) span.className = 'word-mistake';
+    fragment.append(span);
+    cursor = current.end;
+  }
+  // Nach dem letzten aufgedeckten Wort erscheinen auch folgende Satzzeichen.
+  if (count) {
+    const upcoming = learningWordMatches[count];
+    fragment.append(document.createTextNode(
+      learningSourceText.slice(cursor, upcoming ? upcoming.start : undefined)
+    ));
+  }
+  return fragment;
+}
+
+// Anfangsbuchstaben tippen: Nur der erste Buchstabe des nächsten Wortes zählt.
+// Ein Fehlversuch wird erst sichtbar, wenn das Wort korrekt aufgedeckt wird.
+function resetLearningPractice() {
+  resetLearningWords();
   learningIndex = 0;
   learningCurrentMistake = false;
   learningErrors = [];
@@ -1241,27 +1279,7 @@ function resetLearningPractice() {
 }
 
 function renderLearningPractice() {
-  const visibleWords = learningWordMatches.slice(0, learningIndex);
-  const fragment = document.createDocumentFragment();
-  let cursor = 0;
-  for (let i = 0; i < visibleWords.length; i++) {
-    const current = visibleWords[i];
-    fragment.append(document.createTextNode(learningSourceText.slice(cursor, current.start)));
-    const span = document.createElement('span');
-    span.textContent = current.word;
-    if (learningErrors[i]) span.className = 'word-mistake';
-    fragment.append(span);
-    cursor = current.end;
-  }
-  // Satzzeichen und Leerraum folgen auf das soeben aufgedeckte Wort.
-  if (visibleWords.length) {
-    const upcoming = learningWordMatches[learningIndex];
-    fragment.append(document.createTextNode(
-      learningSourceText.slice(cursor, upcoming ? upcoming.start : undefined)
-    ));
-  }
-  learningWordsElement.replaceChildren(fragment);
-
+  learningWordsElement.replaceChildren(revealedWordsFragment(learningIndex, learningErrors));
   const total = learningWordMatches.length;
   const done = learningIndex === total;
   learningProgress.textContent = done
@@ -1271,25 +1289,98 @@ function renderLearningPractice() {
   learningRestart.hidden = !done;
 }
 
+// Wort für Wort: Ein Tastendruck deckt genau das nächste Wort inklusive
+// direkt anschließender Satzzeichen auf. Am Ende wird Restart angeboten.
+function resetWordByWordPractice() {
+  resetLearningWords();
+  wordRevealIndex = 0;
+  renderWordByWordPractice();
+}
+
+function renderWordByWordPractice() {
+  wordByWordWords.replaceChildren(revealedWordsFragment(wordRevealIndex));
+  const total = learningWordMatches.length;
+  const done = wordRevealIndex === total;
+  wordByWordProgress.textContent = done
+    ? `Geschafft – ${total} ${total === 1 ? 'Wort' : 'Wörter'}`
+    : `${wordRevealIndex} / ${total} Wörter`;
+  wordByWordNext.hidden = done;
+  wordByWordRestart.hidden = !done;
+}
+
+wordByWordNext.addEventListener('click', () => {
+  if (learningMode !== 'word-by-word') return;
+  if (wordRevealIndex < learningWordMatches.length) {
+    wordRevealIndex += 1;
+    renderWordByWordPractice();
+    if (wordByWordNext.hidden) wordByWordRestart.focus({preventScroll: true});
+  }
+});
+wordByWordRestart.addEventListener('click', () => {
+  resetWordByWordPractice();
+  wordByWordNext.focus({preventScroll: true});
+});
+
+// Anfangsbuchstaben anzeigen: Der vollständige Vers bleibt verborgen;
+// die Initialen und Originalsatzzeichen dienen als Gedächtnisstütze.
+function initialLettersPreview(text) {
+  let position = 0;
+  let preview = '';
+  for (const match of parseLearningWords(text)) {
+    preview += text.slice(position, match.start);
+    preview += Array.from(match.word)[0];
+    position = match.end;
+  }
+  return preview + text.slice(position);
+}
+
+function resetInitialsHintPractice() {
+  const text = detailText.textContent;
+  initialsHintText.textContent = initialLettersPreview(text);
+  initialsHintSolution.textContent = text;
+  initialsHintSolution.hidden = true;
+  initialsHintToggle.textContent = 'Text anzeigen';
+  initialsHintToggle.setAttribute('aria-expanded', 'false');
+}
+
+initialsHintToggle.addEventListener('click', () => {
+  if (learningMode !== 'initials-hint') return;
+  const show = initialsHintSolution.hidden;
+  initialsHintSolution.hidden = !show;
+  initialsHintToggle.textContent = show ? 'Text verbergen' : 'Text anzeigen';
+  initialsHintToggle.setAttribute('aria-expanded', String(show));
+});
+
 function setLearningMode(mode) {
-  if (mode === 'initials' && bibleState !== 'ready') return;
+  if (!['read', 'initials', 'word-by-word', 'initials-hint'].includes(mode)) return;
+  if (mode !== 'read' && bibleState !== 'ready') return;
   learningMode = mode;
-  const training = mode === 'initials';
-  modeReadButton.setAttribute('aria-pressed', String(!training));
-  modeInitialsButton.setAttribute('aria-pressed', String(training));
-  detailText.hidden = training;
-  learningPractice.hidden = !training;
-  // Nur im Lesemodus die konfigurierten Verse davor und danach anzeigen.
+  modeReadButton.setAttribute('aria-pressed', String(mode === 'read'));
+  modeInitialsButton.setAttribute('aria-pressed', String(mode === 'initials'));
+  modeWordByWordButton.setAttribute('aria-pressed', String(mode === 'word-by-word'));
+  modeInitialsHintButton.setAttribute('aria-pressed', String(mode === 'initials-hint'));
+  detailText.hidden = mode !== 'read';
+  learningPractice.hidden = mode !== 'initials';
+  wordByWordPractice.hidden = mode !== 'word-by-word';
+  initialsHintPractice.hidden = mode !== 'initials-hint';
+  // Kontextverse sind ausschließlich im Lesemodus sichtbar.
   renderAdjacentVerses();
-  if (training) {
+  if (mode === 'initials') {
     resetLearningPractice();
-    // Direkter Knopfdruck gilt bei iOS als Nutzerinteraktion und öffnet die Tastatur.
+    // Ein direkter Knopfdruck erlaubt auch auf iOS das Öffnen der Tastatur.
     learningInput.focus({preventScroll: true});
+  } else if (mode === 'word-by-word') {
+    resetWordByWordPractice();
+    wordByWordNext.focus({preventScroll: true});
+  } else if (mode === 'initials-hint') {
+    resetInitialsHintPractice();
   }
 }
 
 modeReadButton.addEventListener('click', () => setLearningMode('read'));
 modeInitialsButton.addEventListener('click', () => setLearningMode('initials'));
+modeWordByWordButton.addEventListener('click', () => setLearningMode('word-by-word'));
+modeInitialsHintButton.addEventListener('click', () => setLearningMode('initials-hint'));
 learningRestart.addEventListener('click', () => {
   resetLearningPractice();
   learningInput.focus({preventScroll: true});
@@ -1339,8 +1430,11 @@ function renderRoute() {
         activeDetailId = item.id;
         setLearningMode('read');
       }
-      modeInitialsButton.disabled = bibleState !== 'ready' ||
+      const unavailable = bibleState !== 'ready' ||
         !hasVerse(item.book, item.chapter, item.verse);
+      modeInitialsButton.disabled = unavailable;
+      modeWordByWordButton.disabled = unavailable;
+      modeInitialsHintButton.disabled = unavailable;
       renderAdjacentVerses();
       renderDetailMedia(formatReference(item));
       document.title = `${formatReference(item)} – Verse2Brain`;

@@ -193,6 +193,15 @@ button:focus-visible, a:focus-visible, input:focus-visible {
   white-space: pre-wrap; overflow-wrap: anywhere;
 }
 .learning-words .word-mistake { color: var(--learning-mistake); }
+.initials-hint { letter-spacing: .045em; }
+.practice-solution { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px; }
+#word-by-word-next, #word-by-word-restart, #initials-hint-toggle { min-height: 40px; }
+/* Noch kein Wort aufgedeckt: keine ungenutzte Leerzeile reservieren. */
+#word-by-word-words:empty { min-height: 0; margin-bottom: 0; }
+@media (max-width: 580px) {
+  .learning-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mode-button { width: 100%; min-height: 42px; padding: 6px 5px; font-size: .82rem; line-height: 1.25; }
+}
 #learning-input {
   display: block; width: 100%; min-height: 42px;
   padding: 8px 10px; border: 1px solid var(--input-border); border-radius: 0;

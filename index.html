@@ -68,7 +68,9 @@
       </header>
       <nav class="learning-modes" aria-label="Ansicht und Lernmodi">
         <button type="button" id="mode-read" class="mode-button" aria-pressed="true">Lesen</button>
-        <button type="button" id="mode-initials" class="mode-button" aria-pressed="false">Anfangsbuchstaben</button>
+        <button type="button" id="mode-initials" class="mode-button" aria-pressed="false">Anfangsbuchstaben tippen</button>
+        <button type="button" id="mode-word-by-word" class="mode-button" aria-pressed="false">Wort für Wort</button>
+        <button type="button" id="mode-initials-hint" class="mode-button" aria-pressed="false">Anfangsbuchstaben anzeigen</button>
       </nav>
       <aside id="detail-previous" class="adjacent-verse" aria-label="Vorherige Verse" hidden>
         <p class="adjacent-text"></p>
@@ -82,6 +84,19 @@
           <span id="learning-progress" class="learning-progress" role="status" aria-live="polite"></span>
           <button id="learning-restart" type="button" hidden>Restart ↻</button>
         </div>
+      </section>
+      <section id="word-by-word-practice" class="learning-practice" aria-label="Wort für Wort aufdecken" hidden>
+        <p id="word-by-word-words" class="learning-words" aria-label="Aufgedeckte Wörter"></p>
+        <div class="learning-footer">
+          <span id="word-by-word-progress" class="learning-progress" role="status" aria-live="polite"></span>
+          <button id="word-by-word-next" type="button">Nächstes Wort →</button>
+          <button id="word-by-word-restart" type="button" hidden>Restart ↻</button>
+        </div>
+      </section>
+      <section id="initials-hint-practice" class="learning-practice" aria-label="Anfangsbuchstaben anzeigen" hidden>
+        <p id="initials-hint-text" class="learning-words initials-hint" aria-label="Anfangsbuchstaben des Verses"></p>
+        <button id="initials-hint-toggle" type="button" aria-controls="initials-hint-solution" aria-expanded="false">Text anzeigen</button>
+        <p id="initials-hint-solution" class="detail-text practice-solution" hidden></p>
       </section>
       <aside id="detail-next" class="adjacent-verse" aria-label="Nachfolgende Verse" hidden>
         <p class="adjacent-text"></p>
