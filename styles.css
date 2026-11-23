@@ -207,10 +207,12 @@ button:focus-visible, a:focus-visible, input:focus-visible {
 }
 .original-text[lang="he"] {
   font-family: "SBL Hebrew", "Ezra SIL", "Noto Sans Hebrew", "Times New Roman", serif;
+  font-size: 40px; /* zwei Größenstufen über der bisherigen Urtextgröße */
   text-align: right;
 }
 .original-text[lang="grc"] {
   font-family: "Noto Serif", "Palatino Linotype", "Times New Roman", serif;
+  font-size: 24px; /* eine Größenstufe über der bisherigen Urtextgröße */
   text-align: left;
 }
 .original-translation-label {
