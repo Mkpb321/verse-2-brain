@@ -196,6 +196,32 @@ button:focus-visible, a:focus-visible, input:focus-visible {
 .initials-hint { letter-spacing: .045em; }
 .practice-solution { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px; }
 #word-by-word-restart, #initials-hint-toggle { min-height: 40px; }
+/* Urtext und deutsche Übersetzung werden übereinander angezeigt. */
+.original-view { min-width: 0; }
+.original-label {
+  margin: 0 0 8px; color: var(--muted); font-size: .82rem; font-weight: 700;
+}
+.original-text {
+  font-size: 1.28rem; line-height: 2; overflow-wrap: anywhere;
+  unicode-bidi: plaintext;
+}
+.original-text[lang="he"] {
+  font-family: "SBL Hebrew", "Ezra SIL", "Noto Sans Hebrew", "Times New Roman", serif;
+  text-align: right;
+}
+.original-text[lang="grc"] {
+  font-family: "Noto Serif", "Palatino Linotype", "Times New Roman", serif;
+  text-align: left;
+}
+.original-translation-label {
+  border-top: 1px solid var(--line); margin: 22px 0 9px; padding-top: 14px;
+}
+.original-status {
+  margin: 0; color: var(--muted); font-size: .88rem; line-height: 1.5;
+}
+.original-status.error { color: var(--error); }
+.original-recovery { margin-top: 9px; }
+.original-recovery button { min-height: 36px; }
 /* Große, aber unsichtbare Touch-Fläche statt eines zusätzlichen Buttons. */
 #word-by-word-practice {
   display: flex; flex-direction: column;

@@ -71,11 +71,23 @@
         <button type="button" id="mode-initials" class="mode-button" aria-pressed="false">Anfangsbuchstaben tippen</button>
         <button type="button" id="mode-word-by-word" class="mode-button" aria-pressed="false">Wort für Wort</button>
         <button type="button" id="mode-initials-hint" class="mode-button" aria-pressed="false">Anfangsbuchstaben anzeigen</button>
+        <button type="button" id="mode-original" class="mode-button" aria-pressed="false">Urtext</button>
       </nav>
       <aside id="detail-previous" class="adjacent-verse" aria-label="Vorherige Verse" hidden>
         <p class="adjacent-text"></p>
       </aside>
       <p id="detail-text" class="detail-text"></p>
+      <section id="original-view" class="original-view" aria-label="Urtext mit deutscher Übersetzung" hidden>
+        <p id="original-label" class="original-label"></p>
+        <p id="original-text" class="detail-text original-text" hidden></p>
+        <p id="original-status" class="original-status" role="status" aria-live="polite" hidden></p>
+        <div id="original-recovery" class="original-recovery" hidden>
+          <button type="button" id="original-choose-file"></button>
+          <input id="original-json-file" type="file" accept=".json,application/json" hidden aria-label="Urtext-JSON-Datei auswählen">
+        </div>
+        <p class="original-label original-translation-label">Deutsch · SLT 2000</p>
+        <p id="original-translation" class="detail-text" lang="de"></p>
+      </section>
       <section id="learning-practice" class="learning-practice" aria-label="Anfangsbuchstaben lernen" hidden>
         <p id="learning-words" class="learning-words" aria-label="Aufgedeckte Wörter"></p>
         <label class="sr-only" for="learning-input">Anfangsbuchstabe des nächsten Wortes</label>

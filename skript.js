@@ -1,6 +1,6 @@
 /*
- * Verse2Brain (V2B) – SLT 2000
- * Bibeltext wird zur Laufzeit aus "./slt2000.json" geladen (nicht im ZIP).
+ * Verse2Brain (V2B) – SLT 2000 mit Urtext (BHS / NA28).
+ * Die drei Bibeltext-JSON-Dateien werden zur Laufzeit geladen (nicht im ZIP).
  * Erwartetes Format: { tables: { book: { rows: [...] }, verse: { rows: [...] } } }
  * Vers-IDs nutzen book_id / chapter / verse; Buchnamen werden über das
  * bestehende deutsche/englische Aliasverzeichnis auf Loccumer-Kürzel abgebildet.
@@ -12,6 +12,7 @@
 const STORAGE_KEY = 'bibelstellen-liste-v1';
 const SETTINGS_KEY = 'verse2brain-settings-v1';
 const BIBLE_FILE = './slt2000.json';
+const ORIGINAL_FILES = {bhs: './BHS.json', na28: './NA28.json'};
 // Bestehender localStorage-Schlüssel bleibt unverändert, damit vorherige
 // Listen, Reihenfolge und Ein-/Ausklappzustände übernommen werden.
 
@@ -470,6 +471,15 @@ const modeReadButton = document.getElementById('mode-read');
 const modeInitialsButton = document.getElementById('mode-initials');
 const modeWordByWordButton = document.getElementById('mode-word-by-word');
 const modeInitialsHintButton = document.getElementById('mode-initials-hint');
+const modeOriginalButton = document.getElementById('mode-original');
+const originalView = document.getElementById('original-view');
+const originalLabel = document.getElementById('original-label');
+const originalText = document.getElementById('original-text');
+const originalStatus = document.getElementById('original-status');
+const originalRecovery = document.getElementById('original-recovery');
+const originalChooseFile = document.getElementById('original-choose-file');
+const originalJsonFile = document.getElementById('original-json-file');
+const originalTranslation = document.getElementById('original-translation');
 const wordByWordPractice = document.getElementById('word-by-word-practice');
 const wordByWordWords = document.getElementById('word-by-word-words');
 const wordByWordProgress = document.getElementById('word-by-word-progress');
@@ -1221,6 +1231,259 @@ function renderAdjacentVerses() {
   }
 }
 
+
+/*
+ * Urtexte: Die BHS- und NA28-JSONs werden erst beim Öffnen des Modus
+ * geladen. Die Buchnummern in diesen Dateien sind NICHT mit den SLT-IDs
+ * identisch (vor allem im AT nach Nehemia). Die Tabellen werden anhand
+ * des expliziten Kanons und der erwarteten Quellnummern zugeordnet.
+ */
+const BHS_BOOK_ORDER = [
+  'Gen','Ex','Lev','Num','Dtn','Jos','Ri','Rut','1 Sam','2 Sam',
+  '1 Kön','2 Kön','1 Chr','2 Chr','Esra','Neh','Est','Ijob','Ps',
+  'Spr','Koh','Hld','Jes','Jer','Klgl','Ez','Dan','Hos','Joël',
+  'Am','Obd','Jona','Mi','Nah','Hab','Zef','Hag','Sach','Mal'
+];
+const NA28_BOOK_ORDER = [
+  'Mt','Mk','Lk','Joh','Apg','Röm','1 Kor','2 Kor','Gal','Eph',
+  'Phil','Kol','1 Thess','2 Thess','1 Tim','2 Tim','Tit','Phlm',
+  'Hebr','Jak','1 Petr','2 Petr','1 Joh','2 Joh','3 Joh','Jud','Offb'
+];
+const BHS_BOOK_NUMBERS = [
+  10,20,30,40,50,60,70,80,90,100,110,120,130,140,150,160,
+  190,220,230,240,250,260,290,300,310,330,340,350,360,370,
+  380,390,400,410,420,430,440,450,460
+];
+const NA28_BOOK_NUMBERS = NA28_BOOK_ORDER.map((_abbr, index) => 470 + index * 10);
+const originalSources = {
+  bhs: {name: 'BHS', filename: 'BHS.json', books: BHS_BOOK_ORDER,
+    bookNumbers: BHS_BOOK_NUMBERS, state: 'idle', index: null, error: ''},
+  na28: {name: 'NA28', filename: 'NA28.json', books: NA28_BOOK_ORDER,
+    bookNumbers: NA28_BOOK_NUMBERS, state: 'idle', index: null, error: ''}
+};
+const OT_BOOKS = new Set(BHS_BOOK_ORDER);
+
+// Strong-Nummern sind Metadaten und textkritische <f>-Zeichen keine Worte.
+// <t> und <e> kennzeichnen dagegen echten griechischen Vers-Text.
+// Nie innerHTML für Inhalte aus JSON verwenden.
+function cleanOriginalText(value, sourceKey) {
+  let text = value;
+  if (sourceKey === 'bhs') {
+    text = text.replace(/<s>[^<]*<\/s>/gi, '');
+  } else {
+    text = text.replace(/<f>[^<]*<\/f>/gi, '');
+  }
+  return text.replace(/<[^>]*>/g, '').replace(/\s+/gu, ' ').trim();
+}
+
+// Der Quelltext verwendet gelegentlich eine andere Verszählung als SLT 2000:
+// z. B. Gen 32,1 = BHS Gen 31,55; Joel 3,1 = BHS Joel 2,28.
+// Ein gemeinsamer Verslauf durch Blöcke mit geänderten Kapitelgrenzen
+// vermeidet, dass nur wegen gleicher Nummer falsche Texte zusammenstehen.
+// Fehlende/zusammengezogene Einzelverse werden nicht still erfunden.
+function pairOriginalVerse(canonical, original, index, sourceAbbr) {
+  const count = Math.min(canonical.length, original.length);
+  for (let i = 0; i < count; i++) {
+    const from = canonical[i];
+    const to = original[i];
+    index.set(`${sourceAbbr}:${from.chapter}:${from.verse}`, to);
+  }
+}
+
+function alignOriginalBook(abbr, canonicalByChapter, originalByChapter, index, sourceKey) {
+  const chapters = [...new Set([...canonicalByChapter.keys(), ...originalByChapter.keys()])]
+    .sort((a, b) => a - b);
+  if (abbr === 'Ps' && sourceKey === 'bhs') {
+    // Die BHS-Datei fasst bei 62 Psalmen die separate SLT-Überschrift
+    // (teils zwei Überschriftsverse) mit dem ersten Textvers zusammen.
+    for (const chapter of chapters) {
+      const slt = canonicalByChapter.get(chapter) || [];
+      const bhs = originalByChapter.get(chapter) || [];
+      const merged = Math.max(0, slt.length - bhs.length);
+      for (let i = 0; i < slt.length; i++) {
+        const row = bhs[Math.max(0, i - merged)];
+        if (row) index.set(`${abbr}:${slt[i].chapter}:${slt[i].verse}`, row);
+      }
+    }
+    return;
+  }
+  for (let i = 0; i < chapters.length;) {
+    const current = chapters[i];
+    const canonicalCount = (canonicalByChapter.get(current) || []).length;
+    const originalCount = (originalByChapter.get(current) || []).length;
+    if (canonicalCount === originalCount) {
+      pairOriginalVerse(canonicalByChapter.get(current) || [],
+        originalByChapter.get(current) || [], index, abbr);
+      i++;
+      continue;
+    }
+    // Zusammengehörige Kapitel mit verschobener Grenze bis zum Ausgleich
+    // zusammenfassen. Bei einem tatsächlich fehlenden Vers danach wieder
+    // ab Kapitelgrenze synchronisieren, statt alle Folgeverse zu verschieben.
+    let delta = 0;
+    let lastMismatch = i;
+    let end = -1;
+    for (let j = i; j < chapters.length; j++) {
+      const c = chapters[j];
+      const left = (canonicalByChapter.get(c) || []).length;
+      const right = (originalByChapter.get(c) || []).length;
+      delta += left - right;
+      if (left !== right) lastMismatch = j;
+      if (delta === 0) { end = j; break; }
+    }
+    if (end < 0) end = lastMismatch;
+    const slt = [];
+    const source = [];
+    for (let j = i; j <= end; j++) {
+      slt.push(...(canonicalByChapter.get(chapters[j]) || []));
+      source.push(...(originalByChapter.get(chapters[j]) || []));
+    }
+    pairOriginalVerse(slt, source, index, abbr);
+    // NA28 Apg 19,40 enthält auch den Text von SLT Apg 19,41.
+    if (sourceKey === 'na28' && abbr === 'Apg' && current === 19 &&
+        slt.length === source.length + 1) {
+      index.set('Apg:19:41', source[source.length - 1]);
+    }
+    i = end + 1;
+  }
+}
+
+function readOriginalData(payload, sourceKey) {
+  const source = originalSources[sourceKey];
+  const books = payload?.tables?.books?.rows;
+  const verses = payload?.tables?.verses?.rows;
+  if (!Array.isArray(books) || books.length !== source.books.length ||
+      !Array.isArray(verses) || !verses.length) {
+    throw new Error('Ungültige books-/verses-Tabellen.');
+  }
+  const names = new Map();
+  for (let i = 0; i < books.length; i++) {
+    if (books[i]?.book_number !== source.bookNumbers[i]) {
+      throw new Error('Buchnummern passen nicht zum erwarteten Kanon.');
+    }
+    names.set(books[i].book_number, source.books[i]);
+  }
+  const originalByBook = new Map(source.books.map(abbr => [abbr, new Map()]));
+  const seen = new Set();
+  for (const verse of verses) {
+    const abbr = names.get(verse?.book_number);
+    if (!abbr || !Number.isInteger(verse.chapter) || verse.chapter < 1 ||
+        !Number.isInteger(verse.verse) || verse.verse < 1 || typeof verse.text !== 'string') {
+      throw new Error('Ungültige Urtext-Versdaten.');
+    }
+    const key = `${abbr}:${verse.chapter}:${verse.verse}`;
+    if (seen.has(key)) throw new Error(`Vers doppelt vorhanden: ${key}`);
+    seen.add(key);
+    const byChapter = originalByBook.get(abbr);
+    if (!byChapter.has(verse.chapter)) byChapter.set(verse.chapter, []);
+    byChapter.get(verse.chapter).push({
+      chapter: verse.chapter, verse: verse.verse,
+      text: cleanOriginalText(verse.text, sourceKey)
+    });
+  }
+  for (const byChapter of originalByBook.values()) {
+    for (const rows of byChapter.values()) rows.sort((a, b) => a.verse - b.verse);
+  }
+  const canonicalByBook = new Map(source.books.map(abbr => [abbr, new Map()]));
+  for (const row of bibleSequence) {
+    const abbr = bibleAbbrById.get(row.id);
+    const chapters = canonicalByBook.get(abbr);
+    if (!chapters) continue;
+    if (!chapters.has(row.chapter)) chapters.set(row.chapter, []);
+    chapters.get(row.chapter).push(row);
+  }
+  const index = new Map();
+  for (const abbr of source.books) {
+    alignOriginalBook(abbr, canonicalByBook.get(abbr),
+      originalByBook.get(abbr), index, sourceKey);
+  }
+  return index;
+}
+
+async function loadOriginalFile(sourceKey) {
+  const source = originalSources[sourceKey];
+  if (source.state === 'ready' || source.state === 'loading') return;
+  source.state = 'loading';
+  source.error = '';
+  renderOriginalVerse();
+  try {
+    const response = await fetch(ORIGINAL_FILES[sourceKey]);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const index = readOriginalData(await response.json(), sourceKey);
+    source.index = index;
+    source.state = 'ready';
+  } catch (error) {
+    source.state = 'error';
+    source.error = error instanceof Error ? error.message : 'Lesefehler';
+  }
+  renderOriginalVerse();
+}
+
+function renderOriginalVerse() {
+  if (learningMode !== 'original' || detailView.hidden) return;
+  const item = verses.find(entry => entry.id === activeDetailId);
+  if (!item) return;
+  const sourceKey = OT_BOOKS.has(item.book) ? 'bhs' : 'na28';
+  const source = originalSources[sourceKey];
+  const isHebrew = sourceKey === 'bhs';
+  originalText.lang = isHebrew ? 'he' : 'grc';
+  originalText.dir = isHebrew ? 'rtl' : 'ltr';
+  originalLabel.textContent = `${isHebrew ? 'Hebräisch' : 'Griechisch'} · ${source.name}`;
+  originalTranslation.textContent = getVerseText(item.book, item.chapter, item.verse);
+  originalText.hidden = true;
+  originalStatus.hidden = true;
+  originalStatus.classList.remove('error');
+  originalRecovery.hidden = true;
+  if (source.state === 'idle') {
+    originalStatus.textContent = `${source.name} wird geladen …`;
+    originalStatus.hidden = false;
+    void loadOriginalFile(sourceKey);
+  } else if (source.state === 'loading') {
+    originalStatus.textContent = `${source.name} wird geladen …`;
+    originalStatus.hidden = false;
+  } else if (source.state === 'error') {
+    originalStatus.textContent = `${source.filename} konnte nicht geladen werden (${source.error}). Datei neben index.html ablegen oder hier auswählen.`;
+    originalStatus.classList.add('error');
+    originalStatus.hidden = false;
+    originalChooseFile.textContent = `${source.filename} auswählen`;
+    originalRecovery.hidden = false;
+  } else {
+    const result = source.index.get(`${item.book}:${item.chapter}:${item.verse}`);
+    if (!result?.text) {
+      originalStatus.textContent = `Für diese Stelle ist im ${source.name}-Datensatz kein eigener Urtextvers vorhanden.`;
+      originalStatus.hidden = false;
+      return;
+    }
+    if (result.chapter !== item.chapter || result.verse !== item.verse) {
+      originalLabel.textContent += ` (${item.book} ${result.chapter},${result.verse})`;
+    }
+    originalText.textContent = result.text;
+    originalText.hidden = false;
+  }
+}
+
+originalChooseFile.addEventListener('click', () => originalJsonFile.click());
+originalJsonFile.addEventListener('change', async event => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const item = verses.find(entry => entry.id === activeDetailId);
+  if (!item) return;
+  const key = OT_BOOKS.has(item.book) ? 'bhs' : 'na28';
+  const source = originalSources[key];
+  try {
+    const index = readOriginalData(JSON.parse(await file.text()), key);
+    source.index = index;
+    source.state = 'ready';
+    source.error = '';
+  } catch (error) {
+    source.error = error instanceof Error ? error.message : 'Ungültige JSON-Datei';
+    source.state = 'error';
+  } finally {
+    event.target.value = '';
+    renderOriginalVerse();
+  }
+});
+
 /*
  * Lernmodi: Alle arbeiten mit den Wörtern des Originalverses.
  * Satzzeichen und Zwischenräume werden beim Aufdecken automatisch übernommen.
@@ -1376,7 +1639,7 @@ initialsHintToggle.addEventListener('click', () => {
 });
 
 function setLearningMode(mode, refreshMedia = true) {
-  if (!['read', 'initials', 'word-by-word', 'initials-hint'].includes(mode)) return;
+  if (!['read', 'initials', 'word-by-word', 'initials-hint', 'original'].includes(mode)) return;
   if (mode !== 'read' && bibleState !== 'ready') return;
   const previousMode = learningMode;
   learningMode = mode;
@@ -1384,10 +1647,13 @@ function setLearningMode(mode, refreshMedia = true) {
   modeInitialsButton.setAttribute('aria-pressed', String(mode === 'initials'));
   modeWordByWordButton.setAttribute('aria-pressed', String(mode === 'word-by-word'));
   modeInitialsHintButton.setAttribute('aria-pressed', String(mode === 'initials-hint'));
+  modeOriginalButton.setAttribute('aria-pressed', String(mode === 'original'));
   detailText.hidden = mode !== 'read';
   learningPractice.hidden = mode !== 'initials';
   wordByWordPractice.hidden = mode !== 'word-by-word';
   initialsHintPractice.hidden = mode !== 'initials-hint';
+  originalView.hidden = mode !== 'original';
+  if (mode === 'original') renderOriginalVerse();
   // Nachbarverse und Medien sind ausschließlich im Lesemodus sichtbar.
   renderAdjacentVerses();
   if (mode !== 'read') clearDetailMedia();
@@ -1410,6 +1676,7 @@ modeReadButton.addEventListener('click', () => setLearningMode('read'));
 modeInitialsButton.addEventListener('click', () => setLearningMode('initials'));
 modeWordByWordButton.addEventListener('click', () => setLearningMode('word-by-word'));
 modeInitialsHintButton.addEventListener('click', () => setLearningMode('initials-hint'));
+modeOriginalButton.addEventListener('click', () => setLearningMode('original'));
 learningRestart.addEventListener('click', () => {
   resetLearningPractice();
   learningInput.focus({preventScroll: true});
@@ -1464,6 +1731,8 @@ function renderRoute() {
       modeInitialsButton.disabled = unavailable;
       modeWordByWordButton.disabled = unavailable;
       modeInitialsHintButton.disabled = unavailable;
+      modeOriginalButton.disabled = unavailable;
+      if (learningMode === 'original') renderOriginalVerse();
       renderAdjacentVerses();
       renderDetailMedia(formatReference(item));
       document.title = `${formatReference(item)} – Verse2Brain`;
